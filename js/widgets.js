@@ -1,5 +1,6 @@
 // Pembina widget rasmi TradingView (percuma, tanpa API key, tanpa CORS).
 // Setiap widget = satu <div> bekas + satu <script> yang memuatkan konfigurasi JSON.
+import { PAIRS } from "./pairs.js";
 
 const BASE = "https://s3.tradingview.com/external-embedding/";
 
@@ -81,6 +82,31 @@ export function widgetCrossRates(host) {
     isTransparent: true,
     colorTheme: "dark",
     locale: "ms_MY",
+  });
+}
+
+// Ticker tape — harga langsung + perubahan % bagi semua pasangan watchlist.
+export function widgetTickerTape(host) {
+  buildWidget(host, "embed-widget-ticker-tape.js", {
+    symbols: PAIRS.map((p) => ({ proName: p.tv, title: p.id })),
+    showSymbolLogo: true,
+    isTransparent: true,
+    displayMode: "compact",
+    colorTheme: "dark",
+    locale: "ms_MY",
+  });
+}
+
+// Kalendar ekonomi — berita impak tinggi (NFP, FOMC, CPI) untuk elak masuk order ketika berita.
+export function widgetKalendar(host) {
+  buildWidget(host, "embed-widget-events.js", {
+    width: "100%",
+    height: "100%",
+    colorTheme: "dark",
+    isTransparent: true,
+    locale: "ms_MY",
+    importanceFilter: "0,1", // sederhana & tinggi
+    countryFilter: "us,eu,gb,jp,au,ca,ch,nz",
   });
 }
 

@@ -36,6 +36,46 @@ body {
 .padded { padding: 4px; }
 
 /* Watchlist */
+.jam {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: var(--bg2); border: 1px solid var(--garis); border-radius: 14px;
+  padding: 12px; margin-bottom: 12px;
+}
+.jam .jam-masa { font-size: 30px; font-weight: 700; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+.jam .jam-tarikh { font-size: 13px; color: var(--teks2); }
+.jam .jam-kota { font-size: 12px; color: var(--teks2); font-variant-numeric: tabular-nums; }
+.jam .jam-nota { font-size: 11px; color: var(--teks2); text-align: center; }
+
+/* Chip sesi pasaran */
+.sesi-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.sesi-chip {
+  font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+  background: var(--bg3); color: var(--teks2); border: 1px solid var(--garis);
+}
+.sesi-chip.aktif { background: var(--hijau); color: #fff; border-color: var(--hijau); }
+
+/* Badge status masuk order */
+.badge-order {
+  display: flex; flex-direction: column; gap: 2px; align-items: center;
+  width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--garis);
+}
+.badge-order .bo-label { font-size: 15px; font-weight: 800; letter-spacing: 0.5px; }
+.badge-order .bo-sebab { font-size: 11px; color: var(--teks2); text-align: center; }
+.badge-order.elok { background: rgba(22,163,74,0.12); border-color: var(--hijau); }
+.badge-order.hati { background: rgba(210,153,34,0.12); border-color: var(--kuning); }
+.badge-order.elak { background: rgba(239,68,68,0.12); border-color: var(--merah); }
+
+/* Ticker tape */
+.ticker-wrap { margin-bottom: 12px; border: 1px solid var(--garis); border-radius: 12px; overflow: hidden; }
+
+/* Bar status pada skrin Carta */
+.bar-status { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+.bar-status .badge-order { width: auto; flex: 1 1 auto; flex-direction: row; gap: 8px; }
+.bar-status .countdown {
+  flex: 0 0 auto; font-size: 13px; font-weight: 700; color: var(--teks);
+  font-variant-numeric: tabular-nums; background: var(--bg3);
+  border: 1px solid var(--garis); border-radius: 8px; padding: 8px 12px;
+}
 .senarai-kad { display: flex; flex-direction: column; gap: 12px; }
 .kad-pair { background: var(--bg2); border: 1px solid var(--garis); border-radius: 14px; overflow: hidden; }
 .kad-head { display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; }
