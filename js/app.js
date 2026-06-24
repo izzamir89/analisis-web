@@ -116,7 +116,7 @@ function skrinCarta(pairId) {
 
   app.querySelector("#badge-carta").innerHTML = badgeOrderHtml(new Date());
   const cartaEl = app.querySelector("#carta");
-  let interval = "240";
+  let interval = "60";
   const lukis = () => W.widgetCarta(cartaEl, cariPair(getSel()).tv, interval);
   const getSel = () => app.querySelector("#pilih-pair").value;
   mulaCountdown(app.querySelector("#countdown"), () => interval);
