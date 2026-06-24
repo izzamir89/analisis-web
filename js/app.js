@@ -93,7 +93,7 @@ function skrinWatchlist() {
       </header>
       <div class="kad-widget"></div>`;
     wrap.appendChild(kad);
-    W.widgetTeknikal(kad.querySelector(".kad-widget"), p.tv, "1D");
+    W.widgetTeknikal(kad.querySelector(".kad-widget"), p.tv, "1h");
   }
 }
 
