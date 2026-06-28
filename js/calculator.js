@@ -2,6 +2,8 @@
 // SL = ATR × pengganda; TP = jarak SL × nisbah R:R; saiz lot dari risiko %.
 // Konsep R:R minimum dicermin dari engine/core/risk.py (RISK_MIN_RR, lalai 1.5).
 import { PAIRS, cariPair } from "./pairs.js";
+import { tambah as tambahJurnal } from "./journal.js";
+import { statusMasaOrder } from "./sessions.js";
 
 export const RR_MIN = 1.5;
 
@@ -133,6 +135,17 @@ export function renderKalkulator(host) {
           ${lotBaris}
         </table>
         ${amaranHtml}
+        <button type="button" class="btn-kedua" id="simpan-jurnal">📒 Simpan ke Jurnal</button>
       </div>`;
+
+    hasil.querySelector("#simpan-jurnal").addEventListener("click", (ev) => {
+      tambahJurnal({
+        pairId: r.pair.id, arah: r.arah, entry: r.entry,
+        sl: r.sl, tp: r.tp, rr: r.rr, lot: r.lot,
+        sesi: statusMasaOrder(new Date()).label,
+      });
+      ev.target.textContent = "✅ Disimpan ke Jurnal";
+      ev.target.disabled = true;
+    });
   });
 }

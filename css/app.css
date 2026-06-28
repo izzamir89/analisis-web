@@ -131,7 +131,7 @@ table.hasil td:last-child { text-align: right; }
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
   height: calc(var(--nav-h) + env(safe-area-inset-bottom));
   padding-bottom: env(safe-area-inset-bottom);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--bg2); border-top: 1px solid var(--garis);
 }
 .navbtn {
@@ -140,3 +140,38 @@ table.hasil td:last-child { text-align: right; }
 }
 .navbtn .ikon { font-size: 19px; }
 .navbtn.aktif { color: var(--aksen); }
+
+/* Panel Go/No-Go */
+.gng { margin: 0 0 10px; }
+.gng-verdict { margin-bottom: 10px; }
+.gng .gng-verdict .bo-label { font-size: 16px; }
+.gng-rr { margin-bottom: 10px; }
+.gng-rr label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--teks2); }
+.gng-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.gng-item { display: flex; gap: 10px; align-items: flex-start; padding: 8px 10px; border-radius: 10px; border: 1px solid var(--garis); background: var(--bg3); }
+.gng-item.pass { border-color: var(--hijau); }
+.gng-item.warn { border-color: var(--kuning); }
+.gng-item.fail { border-color: var(--merah); }
+.gng-ikon { font-size: 14px; line-height: 1.4; }
+.gng-teks { display: flex; flex-direction: column; gap: 2px; font-size: 13px; }
+.gng-teks span { color: var(--teks2); font-size: 12px; }
+.gng-manual { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; border-top: 1px solid var(--garis); padding-top: 12px; }
+.gng-check { display: flex; align-items: flex-start; gap: 10px; font-size: 13px; color: var(--teks); }
+.gng-check input { width: auto; flex: 0 0 auto; margin-top: 2px; }
+
+/* Panel berita pada skrin Carta */
+.berita { margin-top: 10px; }
+.berita-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.berita .nota { display: block; }
+.berita input[type=datetime-local] { margin-top: 6px; }
+.btn-kecil { background: var(--bg3); color: var(--teks); border: 1px solid var(--garis); border-radius: 8px; padding: 7px 12px; font-size: 13px; font-weight: 600; }
+.berita-kal { height: 60vh; min-height: 380px; margin-top: 10px; border: 1px solid var(--garis); border-radius: 10px; overflow: hidden; }
+
+/* Jurnal dagangan */
+.jurnal-baris .jb-head { display: flex; justify-content: space-between; align-items: center; }
+.jurnal-baris .jb-masa { color: var(--teks2); font-size: 12px; }
+.jurnal-baris .jb-detail { font-size: 13px; margin: 8px 0; line-height: 1.5; }
+.jurnal-baris .jb-aksi { display: flex; gap: 8px; align-items: center; }
+.jurnal-baris .jb-hasil { flex: 1 1 auto; }
+.jurnal-baris .jb-padam { flex: 0 0 auto; }
+.jurnal-baris .jb-nota { margin-top: 8px; font-size: 13px; }

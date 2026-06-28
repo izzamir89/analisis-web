@@ -4,6 +4,9 @@ import * as W from "./widgets.js";
 import { renderKalkulator } from "./calculator.js";
 import { renderAlerts, mulaTinjauan } from "./alerts.js";
 import { sesiAktif, statusMasaOrder, masaTutupLilin, formatBaki, jamKota, SESI } from "./sessions.js";
+import { renderChecklist, hentiChecklist } from "./checklist.js";
+import { renderJurnal } from "./journal.js";
+import { bacaBerita, simpanBerita } from "./news.js";
 
 const app = document.getElementById("app");
 const tajukEl = document.getElementById("tajuk");
@@ -111,7 +114,19 @@ function skrinCarta(pairId) {
       <div id="badge-carta"></div>
       <span class="countdown" id="countdown"></span>
     </div>
+    <div id="gng"></div>
     <div class="carta-wrap" id="carta"></div>
+    <div class="kotak berita" id="berita-panel">
+      <div class="berita-head">
+        <b>📅 Berita impak tinggi</b>
+        <button class="btn-kecil" id="berita-toggle">Tunjuk kalendar</button>
+      </div>
+      <label class="nota">Masa berita merah seterusnya (waktu tempatan) — salin dari kalendar TV sekali, ia menyuap panel Go/No-Go di atas.
+        <input id="berita-masa" type="datetime-local">
+      </label>
+      <button class="btn-kecil" id="berita-padam">Padam masa berita</button>
+      <div class="berita-kal" id="berita-kal" hidden></div>
+    </div>
     <p class="nota">Tip: dalam carta, klik ikon loceng untuk set alert masa-nyata TradingView (perlu akaun TV percuma). Baca nilai ATR(14) di sini untuk kalkulator.</p>`;
 
   app.querySelector("#badge-carta").innerHTML = badgeOrderHtml(new Date());
@@ -133,6 +148,35 @@ function skrinCarta(pairId) {
     });
   });
   lukis();
+
+  // Panel Go/No-Go — guna interval carta semasa untuk timing lilin.
+  renderChecklist(app.querySelector("#gng"), { getInterval: () => interval });
+
+  // Panel berita: input masa berita merah + kalendar impak-tinggi boleh-lipat.
+  const masaEl = app.querySelector("#berita-masa");
+  const tersimpan = bacaBerita();
+  if (tersimpan) masaEl.value = keInputLokal(tersimpan);
+  masaEl.addEventListener("change", () => simpanBerita(masaEl.value));
+  app.querySelector("#berita-padam").addEventListener("click", () => {
+    simpanBerita(null); masaEl.value = "";
+  });
+  const kalEl = app.querySelector("#berita-kal");
+  const toggleEl = app.querySelector("#berita-toggle");
+  toggleEl.addEventListener("click", () => {
+    const tunjuk = kalEl.hidden;
+    kalEl.hidden = !tunjuk;
+    toggleEl.textContent = tunjuk ? "Sembunyi kalendar" : "Tunjuk kalendar";
+    if (tunjuk && !kalEl.dataset.dimuat) {
+      W.widgetKalendar(kalEl, { importanceFilter: "1" }); // impak tinggi sahaja
+      kalEl.dataset.dimuat = "1";
+    }
+  });
+}
+
+// Tukar Date → string "YYYY-MM-DDTHH:MM" waktu tempatan untuk input datetime-local.
+function keInputLokal(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function skrinScreener() {
@@ -172,6 +216,12 @@ function skrinAlerts() {
   renderAlerts(app.querySelector(".padded"));
 }
 
+function skrinJurnal() {
+  tajukEl.textContent = "Jurnal Dagangan";
+  app.innerHTML = `<div class="padded"></div>`;
+  renderJurnal(app.querySelector(".padded"));
+}
+
 // ---- Router ----
 
 function route() {
@@ -180,11 +230,13 @@ function route() {
   window.scrollTo(0, 0);
   hentiJam();       // hentikan jam skrin sebelum (jika ada)
   hentiCountdown(); // hentikan countdown lilin skrin sebelum (jika ada)
+  hentiChecklist(); // hentikan pemasa panel Go/No-Go skrin sebelum (jika ada)
   switch (rute) {
     case "chart": skrinCarta(arg); setActiveNav("watchlist"); break;
     case "screener": skrinScreener(); setActiveNav("screener"); break;
     case "calc": skrinKalkulator(); setActiveNav("calc"); break;
     case "alerts": skrinAlerts(); setActiveNav("alerts"); break;
+    case "jurnal": skrinJurnal(); setActiveNav("jurnal"); break;
     default: skrinWatchlist(); setActiveNav("watchlist");
   }
 }

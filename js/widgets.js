@@ -98,15 +98,16 @@ export function widgetTickerTape(host) {
 }
 
 // Kalendar ekonomi — berita impak tinggi (NFP, FOMC, CPI) untuk elak masuk order ketika berita.
-export function widgetKalendar(host) {
+// importanceFilter: "0,1"=sederhana & tinggi (lalai), "1"=tinggi sahaja (untuk skrin Carta).
+export function widgetKalendar(host, { importanceFilter = "0,1", countryFilter = "us,eu,gb,jp,au,ca,ch,nz" } = {}) {
   buildWidget(host, "embed-widget-events.js", {
     width: "100%",
     height: "100%",
     colorTheme: "dark",
     isTransparent: true,
     locale: "ms_MY",
-    importanceFilter: "0,1", // sederhana & tinggi
-    countryFilter: "us,eu,gb,jp,au,ca,ch,nz",
+    importanceFilter,
+    countryFilter,
   });
 }
 
