@@ -1,6 +1,6 @@
 // Service worker minimum — cache app-shell supaya PWA boleh-pasang & buka pantas.
 // Widget TradingView & data kadar SENTIASA dari rangkaian (tidak di-cache).
-const CACHE = "forex-tv-v2";
+const CACHE = "forex-tv-v3";
 const SHELL = [
   "./",
   "./index.html",
@@ -30,16 +30,19 @@ self.addEventListener("activate", (e) => {
 
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
-  // Hanya layan app-shell asal-sama dari cache; selebihnya terus ke rangkaian.
+  // Hanya layan app-shell asal-sama; selebihnya terus ke rangkaian.
+  // Strategi stale-while-revalidate: serve dari cache (laju), tapi sentiasa
+  // ambil versi terkini di latar & kemas kini cache supaya reload berikut auto-terkini.
   if (e.request.method === "GET" && url.origin === self.location.origin) {
     e.respondWith(
-      caches.match(e.request).then((hit) =>
-        hit || fetch(e.request).then((res) => {
+      caches.match(e.request).then((hit) => {
+        const ambil = fetch(e.request).then((res) => {
           const salinan = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, salinan)).catch(() => {});
           return res;
-        }).catch(() => hit)
-      )
+        }).catch(() => hit);
+        return hit || ambil;
+      })
     );
   }
 });

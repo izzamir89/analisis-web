@@ -24,7 +24,7 @@ function buildWidget(host, scriptFile, config) {
 }
 
 // Tolok Technical Analysis (Strong Buy … Strong Sell) untuk satu pasangan.
-export function widgetTeknikal(host, simbol, interval = "1D") {
+export function widgetTeknikal(host, simbol, interval = "1h") {
   buildWidget(host, "embed-widget-technical-analysis.js", {
     interval,
     width: "100%",
@@ -39,7 +39,7 @@ export function widgetTeknikal(host, simbol, interval = "1D") {
 }
 
 // Carta lilin penuh + indikator pra-muat (RSI, MACD, Bollinger).
-export function widgetCarta(host, simbol, interval = "240") {
+export function widgetCarta(host, simbol, interval = "60") {
   buildWidget(host, "embed-widget-advanced-chart.js", {
     autosize: true,
     symbol: simbol,
