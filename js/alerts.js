@@ -9,18 +9,14 @@
 // Untuk alert masa-nyata sebenar, guna alert asli dalam carta TradingView (perlu
 // akaun TV percuma) — dipaparkan sebagai cadangan utama dalam UI.
 import { PAIRS } from "./pairs.js";
+import { bacaJSON, simpanJSON } from "./store.js";
 
 const KUNCI = "forex_alerts";
 const API = "https://api.frankfurter.dev/v1/latest";
 const SOKONG = (id) => id !== "XAUUSD"; // frankfurter tiada emas
 
-function baca() {
-  try { return JSON.parse(localStorage.getItem(KUNCI)) || []; }
-  catch { return []; }
-}
-function simpan(list) {
-  localStorage.setItem(KUNCI, JSON.stringify(list));
-}
+const baca = () => bacaJSON(KUNCI, []);
+const simpan = (list) => simpanJSON(KUNCI, list);
 
 export async function mintaKebenaran() {
   if (!("Notification" in window)) return "unsupported";
@@ -59,9 +55,14 @@ export async function semakAlerts() {
       if (kena) {
         a.dipicu = true;
         berubah = true;
-        notify(`Alert ${a.pairId}`, `Harga ${harga} ${a.arah === "atas" ? "≥" : "≤"} sasaran ${a.harga}`);
+        notify(
+          `Alert ${a.pairId}`,
+          `Harga ${harga} ${a.arah === "atas" ? "≥" : "≤"} sasaran ${a.harga}`
+        );
       }
-    } catch { /* abai ralat rangkaian */ }
+    } catch {
+      /* abai ralat rangkaian */
+    }
   }
   if (berubah) simpan(list);
   return baca();
@@ -74,13 +75,17 @@ export function mulaTinjauan(intervalMs = 60000) {
   pemasa = setInterval(semakAlerts, intervalMs);
 }
 export function hentiTinjauan() {
-  if (pemasa) { clearInterval(pemasa); pemasa = null; }
+  if (pemasa) {
+    clearInterval(pemasa);
+    pemasa = null;
+  }
 }
 
 // Bina UI alert dalam `host`.
 export function renderAlerts(host) {
   const opsiPair = PAIRS.map(
-    (p) => `<option value="${p.id}" ${SOKONG(p.id) ? "" : "disabled"}>${p.id}${SOKONG(p.id) ? "" : " (tak disokong)"}</option>`
+    (p) =>
+      `<option value="${p.id}" ${SOKONG(p.id) ? "" : "disabled"}>${p.id}${SOKONG(p.id) ? "" : " (tak disokong)"}</option>`
   ).join("");
   host.innerHTML = `
     <div class="kotak nota">
@@ -102,16 +107,27 @@ export function renderAlerts(host) {
   const senaraiEl = host.querySelector("#senarai-alert");
   function lukisSenarai() {
     const list = baca();
-    if (!list.length) { senaraiEl.innerHTML = `<p class="nota">Tiada alert lagi.</p>`; return; }
-    senaraiEl.innerHTML = list.map((a, i) => `
+    if (!list.length) {
+      senaraiEl.innerHTML = `<p class="nota">Tiada alert lagi.</p>`;
+      return;
+    }
+    senaraiEl.innerHTML = list
+      .map(
+        (a, i) => `
       <div class="kotak alert-baris">
         <span>${a.pairId} ${a.arah === "atas" ? "≥" : "≤"} ${a.harga} ${a.dipicu ? "✅ dipicu" : "⏳"}</span>
         <button data-i="${i}" class="btn-buang">Buang</button>
-      </div>`).join("");
+      </div>`
+      )
+      .join("");
     senaraiEl.querySelectorAll(".btn-buang").forEach((b) =>
       b.addEventListener("click", () => {
-        const list = baca(); list.splice(Number(b.dataset.i), 1); simpan(list); lukisSenarai();
-      }));
+        const list = baca();
+        list.splice(Number(b.dataset.i), 1);
+        simpan(list);
+        lukisSenarai();
+      })
+    );
   }
 
   host.querySelector("#form-alert").addEventListener("submit", async (e) => {

@@ -18,6 +18,12 @@ function buildWidget(host, scriptFile, config) {
   script.async = true;
   script.src = BASE + scriptFile;
   script.innerHTML = JSON.stringify(config);
+  // Jika skrip gagal dimuat (offline / TV tak dapat dihubungi), papar mesej,
+  // bukan kotak kosong tanpa penjelasan.
+  script.onerror = () => {
+    host.innerHTML =
+      '<div class="widget-ralat">⚠️ Gagal muat widget TradingView — semak sambungan internet.</div>';
+  };
   container.appendChild(script);
 
   host.appendChild(container);
@@ -52,11 +58,7 @@ export function widgetCarta(host, simbol, interval = "60") {
     allow_symbol_change: true,
     hide_side_toolbar: false,
     details: true,
-    studies: [
-      "STD;RSI",
-      "STD;MACD",
-      "STD;Bollinger_Bands",
-    ],
+    studies: ["STD;RSI", "STD;MACD", "STD;Bollinger_Bands"],
     support_host: "https://www.tradingview.com",
   });
 }
@@ -99,7 +101,10 @@ export function widgetTickerTape(host) {
 
 // Kalendar ekonomi — berita impak tinggi (NFP, FOMC, CPI) untuk elak masuk order ketika berita.
 // importanceFilter: "0,1"=sederhana & tinggi (lalai), "1"=tinggi sahaja (untuk skrin Carta).
-export function widgetKalendar(host, { importanceFilter = "0,1", countryFilter = "us,eu,gb,jp,au,ca,ch,nz" } = {}) {
+export function widgetKalendar(
+  host,
+  { importanceFilter = "0,1", countryFilter = "us,eu,gb,jp,au,ca,ch,nz" } = {}
+) {
   buildWidget(host, "embed-widget-events.js", {
     width: "100%",
     height: "100%",

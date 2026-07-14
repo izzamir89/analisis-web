@@ -1,0 +1,18 @@
+{
+  "name": "analisis-web",
+  "version": "1.0.0",
+  "description": "PWA forex — carta, screener, kalkulator & jurnal guna widget TradingView (tanpa AI, tanpa API key).",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "TZ=UTC vitest run",
+    "test:watch": "TZ=UTC vitest",
+    "lint": "eslint js test && prettier --check \"**/*.{js,css,html,json,webmanifest}\"",
+    "format": "prettier --write \"**/*.{js,css,html,json,webmanifest}\""
+  },
+  "devDependencies": {
+    "eslint": "^8.57.1",
+    "prettier": "^3.4.2",
+    "vitest": "^2.1.9"
+  }
+}

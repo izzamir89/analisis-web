@@ -15,17 +15,24 @@ export function bacaBerita() {
     if (!v) return null;
     const d = new Date(v);
     return isNaN(d.getTime()) ? null : d;
-  } catch { return null; }
+  } catch {
+    return null;
+  }
 }
 
 // Simpan masa berita (terima string datetime-local atau Date). null = padam.
 export function simpanBerita(nilai) {
   try {
-    if (!nilai) { localStorage.removeItem(KUNCI); return; }
+    if (!nilai) {
+      localStorage.removeItem(KUNCI);
+      return;
+    }
     const d = nilai instanceof Date ? nilai : new Date(nilai);
     if (isNaN(d.getTime())) return;
     localStorage.setItem(KUNCI, d.toISOString());
-  } catch { /* abai */ }
+  } catch {
+    /* abai */
+  }
 }
 
 // Jarak ke berita seterusnya pada masa `now`.
