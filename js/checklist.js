@@ -3,13 +3,20 @@
 import { statusMasaOrder, masaTutupLilin, formatBaki } from "./sessions.js";
 import { jarakBerita, AMARAN_MINIT } from "./news.js";
 import { RR_MIN } from "./calculator.js";
+import { bacaJSON, simpanJSON, escapeHtml } from "./store.js";
 
-// Senarai semak manual — tak boleh diauto sebab perlu baca carta dengan mata.
+// Senarai semak manual lalai — tak boleh diauto sebab perlu baca carta dengan mata.
 const MANUAL = [
   { id: "trend", teks: "Trend TF tinggi (4J/Harian) selari dengan arah order" },
   { id: "teknikal", teks: "Tolok teknikal tidak bercanggah dengan arah" },
   { id: "paras", teks: "Harga di paras penting (sokongan / rintangan)" },
 ];
+
+// Item tersuai pengguna disimpan tempatan; digabung dengan item lalai.
+const KUNCI_MANUAL = "gng_manual_custom";
+const bacaCustom = () => bacaJSON(KUNCI_MANUAL, []);
+const simpanCustom = (list) => simpanJSON(KUNCI_MANUAL, list);
+const semuaManual = () => [...MANUAL, ...bacaCustom()];
 
 // Kira semua item AUTO pada masa `now`. Pulang array {id,label,status,sebab}.
 // status: "pass" | "warn" | "fail".
@@ -19,7 +26,8 @@ function itemAuto(now, interval, rr) {
   // 1) Kecairan sesi
   const st = statusMasaOrder(now);
   items.push({
-    id: "sesi", label: "Kecairan sesi",
+    id: "sesi",
+    label: "Kecairan sesi",
     status: st.tahap === "elok" ? "pass" : st.tahap === "hati" ? "warn" : "fail",
     sebab: st.sebab,
   });
@@ -27,33 +35,53 @@ function itemAuto(now, interval, rr) {
   // 2) Timing tutup lilin
   const { saatBaki } = masaTutupLilin(now, interval);
   items.push({
-    id: "timing", label: "Timing lilin",
+    id: "timing",
+    label: "Timing lilin",
     status: saatBaki < 60 ? "warn" : "pass",
-    sebab: saatBaki < 60
-      ? `Lilin hampir tutup (${saatBaki}s) — tunggu lilin baru.`
-      : `Lilin tutup dalam ${formatBaki(saatBaki)}.`,
+    sebab:
+      saatBaki < 60
+        ? `Lilin hampir tutup (${saatBaki}s) — tunggu lilin baru.`
+        : `Lilin tutup dalam ${formatBaki(saatBaki)}.`,
   });
 
   // 3) Jarak berita merah
   const b = jarakBerita(now);
   if (!b.ada) {
-    items.push({ id: "berita", label: "Berita impak tinggi", status: "warn",
-      sebab: "Masa berita tidak diset — semak kalendar & isi di bawah." });
+    items.push({
+      id: "berita",
+      label: "Berita impak tinggi",
+      status: "warn",
+      sebab: "Masa berita tidak diset — semak kalendar & isi di bawah.",
+    });
   } else if (b.bahaya) {
-    items.push({ id: "berita", label: "Berita impak tinggi", status: "fail",
+    items.push({
+      id: "berita",
+      label: "Berita impak tinggi",
+      status: "fail",
       sebab: b.lalu
         ? `Baru ${Math.abs(Math.round(b.minit))} min selepas berita — pasaran tak menentu.`
-        : `Berita merah dalam ${Math.round(b.minit)} min — elak masuk.` });
+        : `Berita merah dalam ${Math.round(b.minit)} min — elak masuk.`,
+    });
   } else {
-    items.push({ id: "berita", label: "Berita impak tinggi", status: "pass",
-      sebab: b.lalu ? "Tiada berita hampir." : `Berita seterusnya dalam ${Math.round(b.minit)} min (>${AMARAN_MINIT} min).` });
+    items.push({
+      id: "berita",
+      label: "Berita impak tinggi",
+      status: "pass",
+      sebab: b.lalu
+        ? "Tiada berita hampir."
+        : `Berita seterusnya dalam ${Math.round(b.minit)} min (>${AMARAN_MINIT} min).`,
+    });
   }
 
   // 4) Nisbah R:R
   items.push({
-    id: "rr", label: "Nisbah R:R",
+    id: "rr",
+    label: "Nisbah R:R",
     status: rr >= RR_MIN ? "pass" : "fail",
-    sebab: rr >= RR_MIN ? `R:R ${rr.toFixed(2)} ≥ minimum ${RR_MIN}.` : `R:R ${rr.toFixed(2)} di bawah minimum ${RR_MIN}.`,
+    sebab:
+      rr >= RR_MIN
+        ? `R:R ${rr.toFixed(2)} ≥ minimum ${RR_MIN}.`
+        : `R:R ${rr.toFixed(2)} di bawah minimum ${RR_MIN}.`,
   });
 
   return items;
@@ -72,7 +100,10 @@ const IKON = { pass: "🟢", warn: "🟡", fail: "🔴" };
 
 let pemasa = null;
 export function hentiChecklist() {
-  if (pemasa) { clearInterval(pemasa); pemasa = null; }
+  if (pemasa) {
+    clearInterval(pemasa);
+    pemasa = null;
+  }
 }
 
 // Bina panel dalam `host`. getInterval() pulang interval carta semasa ("60"/"240"/"D").
@@ -81,27 +112,52 @@ export function renderChecklist(host, { getInterval }) {
   hentiChecklist();
   host.innerHTML = `
     <div class="kotak gng">
-      <div class="gng-verdict badge-order" id="gng-verdict"></div>
+      <div class="gng-verdict badge-order" id="gng-verdict" role="status" aria-live="polite"></div>
       <div class="gng-rr">
         <label>Nisbah R:R rancangan
           <input id="gng-rr" type="number" step="any" inputmode="decimal" value="2">
         </label>
       </div>
       <ul class="gng-list" id="gng-list"></ul>
-      <div class="gng-manual" id="gng-manual">
-        ${MANUAL.map((m) => `
-          <label class="gng-check"><input type="checkbox" data-id="${m.id}"><span>${m.teks}</span></label>`).join("")}
+      <div class="gng-manual" id="gng-manual"></div>
+      <div class="gng-tambah">
+        <input id="gng-item-baru" placeholder="Tambah item semakan sendiri…" maxlength="80">
+        <button type="button" class="btn-kecil" id="gng-tambah-btn">➕ Tambah</button>
       </div>
     </div>`;
 
   const rrEl = host.querySelector("#gng-rr");
   const listEl = host.querySelector("#gng-list");
   const verdictEl = host.querySelector("#gng-verdict");
-  const checks = [...host.querySelectorAll(".gng-manual input[type=checkbox]")];
+  const manualEl = host.querySelector("#gng-manual");
 
   // Keadaan semasa (dikongsi untuk snapshot ke jurnal).
   let auto = [];
   let verdict = { tahap: "hati", label: "BERHATI", lulus: false };
+  let checks = [];
+
+  // Bina semula bahagian item manual (lalai + tersuai) tanpa reset pemasa auto.
+  const lukisManual = () => {
+    const tersuai = new Set(bacaCustom().map((c) => c.id));
+    manualEl.innerHTML = semuaManual()
+      .map(
+        (m) => `
+        <label class="gng-check">
+          <input type="checkbox" data-id="${m.id}"><span>${escapeHtml(m.teks)}</span>
+          ${tersuai.has(m.id) ? `<button type="button" class="gng-buang" data-buang="${m.id}" aria-label="Buang item">✕</button>` : ""}
+        </label>`
+      )
+      .join("");
+    checks = [...manualEl.querySelectorAll("input[type=checkbox]")];
+    checks.forEach((c) => c.addEventListener("change", kemas));
+    manualEl.querySelectorAll(".gng-buang").forEach((b) =>
+      b.addEventListener("click", () => {
+        simpanCustom(bacaCustom().filter((c) => c.id !== b.dataset.buang));
+        lukisManual();
+        kemas();
+      })
+    );
+  };
 
   const kemas = () => {
     const rr = Number(rrEl.value) || 0;
@@ -112,13 +168,27 @@ export function renderChecklist(host, { getInterval }) {
     verdictEl.className = `gng-verdict badge-order ${verdict.tahap}`;
     verdictEl.innerHTML = `<span class="bo-label">${IKON[verdict.tahap === "elok" ? "pass" : verdict.tahap === "hati" ? "warn" : "fail"]} ${verdict.label}</span>`;
 
-    listEl.innerHTML = auto.map((x) =>
-      `<li class="gng-item ${x.status}"><span class="gng-ikon">${IKON[x.status]}</span>
-         <span class="gng-teks"><b>${x.label}</b><span>${x.sebab}</span></span></li>`).join("");
+    listEl.innerHTML = auto
+      .map(
+        (x) =>
+          `<li class="gng-item ${x.status}"><span class="gng-ikon">${IKON[x.status]}</span>
+         <span class="gng-teks"><b>${x.label}</b><span>${x.sebab}</span></span></li>`
+      )
+      .join("");
   };
 
+  const tambahEl = host.querySelector("#gng-item-baru");
+  host.querySelector("#gng-tambah-btn").addEventListener("click", () => {
+    const teks = tambahEl.value.trim();
+    if (!teks) return;
+    simpanCustom([...bacaCustom(), { id: `c${Date.now()}`, teks }]);
+    tambahEl.value = "";
+    lukisManual();
+    kemas();
+  });
+
   rrEl.addEventListener("input", kemas);
-  checks.forEach((c) => c.addEventListener("change", kemas));
+  lukisManual();
   kemas();
   pemasa = setInterval(kemas, 1000); // timing & countdown berita hidup
 

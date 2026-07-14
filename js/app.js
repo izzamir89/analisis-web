@@ -3,7 +3,14 @@ import { PAIRS, cariPair } from "./pairs.js";
 import * as W from "./widgets.js";
 import { renderKalkulator } from "./calculator.js";
 import { renderAlerts, mulaTinjauan } from "./alerts.js";
-import { sesiAktif, statusMasaOrder, masaTutupLilin, formatBaki, jamKota, SESI } from "./sessions.js";
+import {
+  sesiAktif,
+  statusMasaOrder,
+  masaTutupLilin,
+  formatBaki,
+  jamKota,
+  SESI,
+} from "./sessions.js";
 import { renderChecklist, hentiChecklist } from "./checklist.js";
 import { renderJurnal } from "./journal.js";
 import { bacaBerita, simpanBerita } from "./news.js";
@@ -19,15 +26,16 @@ const TF = [
 ];
 
 function setActiveNav(nama) {
-  document.querySelectorAll(".navbtn").forEach((b) =>
-    b.classList.toggle("aktif", b.dataset.rute === nama));
+  document
+    .querySelectorAll(".navbtn")
+    .forEach((b) => b.classList.toggle("aktif", b.dataset.rute === nama));
 }
 
 // Badge "Status Masuk Order" — berdasarkan kecairan sesi (bukan arah Buy/Sell).
 function badgeOrderHtml(d) {
   const st = statusMasaOrder(d);
   const ikon = st.tahap === "elok" ? "🟢" : st.tahap === "hati" ? "🟡" : "🔴";
-  return `<div class="badge-order ${st.tahap}">
+  return `<div class="badge-order ${st.tahap}" role="status" aria-live="polite">
       <span class="bo-label">${ikon} ${st.label}</span>
       <span class="bo-sebab">${st.sebab}</span>
     </div>`;
@@ -36,19 +44,36 @@ function badgeOrderHtml(d) {
 // Jam langsung + jam berbilang zon + chip sesi + badge status — dibersihkan setiap tukar skrin.
 let jamPemasa = null;
 function hentiJam() {
-  if (jamPemasa) { clearInterval(jamPemasa); jamPemasa = null; }
+  if (jamPemasa) {
+    clearInterval(jamPemasa);
+    jamPemasa = null;
+  }
 }
 function mulaJam(el) {
   const hari = ["Ahad", "Isnin", "Selasa", "Rabu", "Khamis", "Jumaat", "Sabtu"];
-  const bulan = ["Jan", "Feb", "Mac", "Apr", "Mei", "Jun", "Jul", "Ogos", "Sep", "Okt", "Nov", "Dis"];
+  const bulan = [
+    "Jan",
+    "Feb",
+    "Mac",
+    "Apr",
+    "Mei",
+    "Jun",
+    "Jul",
+    "Ogos",
+    "Sep",
+    "Okt",
+    "Nov",
+    "Dis",
+  ];
   const pad = (n) => String(n).padStart(2, "0");
   const tik = () => {
     const d = new Date();
     const tarikh = `${hari[d.getDay()]}, ${d.getDate()} ${bulan[d.getMonth()]} ${d.getFullYear()}`;
     const masa = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
     const aktif = sesiAktif(d);
-    const chips = SESI.map((s) =>
-      `<span class="sesi-chip ${aktif.includes(s.id) ? "aktif" : ""}">${s.id}</span>`).join("");
+    const chips = SESI.map(
+      (s) => `<span class="sesi-chip ${aktif.includes(s.id) ? "aktif" : ""}">${s.id}</span>`
+    ).join("");
     el.innerHTML = `
       <span class="jam-masa">${masa}</span>
       <span class="jam-tarikh">${tarikh}</span>
@@ -64,7 +89,10 @@ function mulaJam(el) {
 // Countdown tutup lilin untuk skrin Carta — pemasa berasingan, dibersihkan setiap tukar skrin.
 let countdownPemasa = null;
 function hentiCountdown() {
-  if (countdownPemasa) { clearInterval(countdownPemasa); countdownPemasa = null; }
+  if (countdownPemasa) {
+    clearInterval(countdownPemasa);
+    countdownPemasa = null;
+  }
 }
 function mulaCountdown(el, getInterval) {
   const tik = () => {
@@ -92,7 +120,10 @@ function skrinWatchlist() {
     kad.innerHTML = `
       <header class="kad-head">
         <div><b>${p.id}</b><span class="sub">${p.nama}</span></div>
-        <a class="lihat" href="#chart/${p.id}">Carta →</a>
+        <div class="kad-pautan">
+          <a class="lihat" href="#mtf/${p.id}">MTF</a>
+          <a class="lihat" href="#chart/${p.id}">Carta →</a>
+        </div>
       </header>
       <div class="kad-widget"></div>`;
     wrap.appendChild(kad);
@@ -100,15 +131,49 @@ function skrinWatchlist() {
   }
 }
 
+// Skrin Multi-Timeframe — tolok teknikal 1J / 4J / Harian bersebelahan untuk lihat
+// konfluens trend sepintas lalu. Tolok visual sahaja (widget iframe tak boleh dibaca).
+const MTF_TF = [
+  { label: "1 Jam", v: "1h" },
+  { label: "4 Jam", v: "4h" },
+  { label: "Harian", v: "1D" },
+];
+function skrinMtf(pairId) {
+  const p = cariPair(pairId);
+  tajukEl.textContent = `MTF ${p.id}`;
+  app.innerHTML = `
+    <div class="bar-pilih">
+      <select id="pilih-pair">${PAIRS.map(
+        (x) => `<option value="${x.id}" ${x.id === p.id ? "selected" : ""}>${x.id}</option>`
+      ).join("")}</select>
+      <a class="lihat" href="#chart/${p.id}">Buka Carta →</a>
+    </div>
+    <p class="nota">Penjajaran trend antara timeframe — cari konfluens (ketiga-tiga selari) sebelum masuk. Tolok visual sahaja.</p>
+    <div class="mtf-grid">
+      ${MTF_TF.map(
+        (t) =>
+          `<div class="mtf-sel"><div class="mtf-tajuk">${t.label}</div><div class="mtf-widget" data-tf="${t.v}"></div></div>`
+      ).join("")}
+    </div>`;
+  app.querySelectorAll(".mtf-widget").forEach((el) => {
+    W.widgetTeknikal(el, p.tv, el.dataset.tf);
+  });
+  app.querySelector("#pilih-pair").addEventListener("change", (e) => {
+    location.hash = `#mtf/${e.target.value}`;
+  });
+}
+
 function skrinCarta(pairId) {
   const p = cariPair(pairId);
   tajukEl.textContent = `Carta ${p.id}`;
   app.innerHTML = `
     <div class="bar-pilih">
-      <select id="pilih-pair">${PAIRS.map((x) =>
-        `<option value="${x.id}" ${x.id === p.id ? "selected" : ""}>${x.id}</option>`).join("")}</select>
-      <div class="tf">${TF.map((t) =>
-        `<button class="tfbtn" data-v="${t.v}">${t.label}</button>`).join("")}</div>
+      <select id="pilih-pair">${PAIRS.map(
+        (x) => `<option value="${x.id}" ${x.id === p.id ? "selected" : ""}>${x.id}</option>`
+      ).join("")}</select>
+      <div class="tf">${TF.map(
+        (t) => `<button class="tfbtn" data-v="${t.v}">${t.label}</button>`
+      ).join("")}</div>
     </div>
     <div class="bar-status">
       <div id="badge-carta"></div>
@@ -158,7 +223,8 @@ function skrinCarta(pairId) {
   if (tersimpan) masaEl.value = keInputLokal(tersimpan);
   masaEl.addEventListener("change", () => simpanBerita(masaEl.value));
   app.querySelector("#berita-padam").addEventListener("click", () => {
-    simpanBerita(null); masaEl.value = "";
+    simpanBerita(null);
+    masaEl.value = "";
   });
   const kalEl = app.querySelector("#berita-kal");
   const toggleEl = app.querySelector("#berita-toggle");
@@ -200,7 +266,8 @@ function skrinScreener() {
     b.addEventListener("click", () => {
       app.querySelectorAll(".sbtn").forEach((x) => x.classList.toggle("aktif", x === b));
       lukis(b.dataset.w);
-    }));
+    })
+  );
   lukis("screener");
 }
 
@@ -228,16 +295,37 @@ function route() {
   const hash = location.hash || "#watchlist";
   const [rute, arg] = hash.replace(/^#/, "").split("/");
   window.scrollTo(0, 0);
-  hentiJam();       // hentikan jam skrin sebelum (jika ada)
+  hentiJam(); // hentikan jam skrin sebelum (jika ada)
   hentiCountdown(); // hentikan countdown lilin skrin sebelum (jika ada)
   hentiChecklist(); // hentikan pemasa panel Go/No-Go skrin sebelum (jika ada)
   switch (rute) {
-    case "chart": skrinCarta(arg); setActiveNav("watchlist"); break;
-    case "screener": skrinScreener(); setActiveNav("screener"); break;
-    case "calc": skrinKalkulator(); setActiveNav("calc"); break;
-    case "alerts": skrinAlerts(); setActiveNav("alerts"); break;
-    case "jurnal": skrinJurnal(); setActiveNav("jurnal"); break;
-    default: skrinWatchlist(); setActiveNav("watchlist");
+    case "chart":
+      skrinCarta(arg);
+      setActiveNav("watchlist");
+      break;
+    case "mtf":
+      skrinMtf(arg);
+      setActiveNav("watchlist");
+      break;
+    case "screener":
+      skrinScreener();
+      setActiveNav("screener");
+      break;
+    case "calc":
+      skrinKalkulator();
+      setActiveNav("calc");
+      break;
+    case "alerts":
+      skrinAlerts();
+      setActiveNav("alerts");
+      break;
+    case "jurnal":
+      skrinJurnal();
+      setActiveNav("jurnal");
+      break;
+    default:
+      skrinWatchlist();
+      setActiveNav("watchlist");
   }
 }
 
