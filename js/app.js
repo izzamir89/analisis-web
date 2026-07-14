@@ -335,6 +335,19 @@ window.addEventListener("DOMContentLoaded", () => {
   mulaTinjauan(); // semak alert tersimpan semasa app dibuka
   // Daftar service worker (PWA boleh-pasang)
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    // updateViaCache:"none" → pelayar sentiasa semak SW baharu dari rangkaian
+    // (abai cache HTTP 10-minit), jadi deploy baharu dikesan segera.
+    navigator.serviceWorker
+      .register("./service-worker.js", { updateViaCache: "none" })
+      .catch(() => {});
+    // Auto-reload SEKALI bila SW baharu ambil alih — elak paparan basi selepas deploy.
+    // Hanya reload jika halaman sudah dikawal SW lama (bukan pemasangan pertama).
+    const adaController = !!navigator.serviceWorker.controller;
+    let dahReload = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (dahReload || !adaController) return;
+      dahReload = true;
+      location.reload();
+    });
   }
 });

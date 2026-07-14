@@ -1,6 +1,6 @@
 // Service worker minimum — cache app-shell supaya PWA boleh-pasang & buka pantas.
 // Widget TradingView & data kadar SENTIASA dari rangkaian (tidak di-cache).
-const CACHE = "forex-tv-v6";
+const CACHE = "forex-tv-v7";
 const SHELL = [
   "./",
   "./index.html",
