@@ -14,6 +14,7 @@ import {
 import { renderChecklist, hentiChecklist } from "./checklist.js";
 import { renderJurnal } from "./journal.js";
 import { bacaBerita, simpanBerita } from "./news.js";
+import { renderDashboard } from "./dashboard.js";
 
 const app = document.getElementById("app");
 const tajukEl = document.getElementById("tajuk");
@@ -271,6 +272,13 @@ function skrinScreener() {
   lukis("screener");
 }
 
+function skrinDashboard(pairId) {
+  const p = cariPair(pairId);
+  tajukEl.textContent = `Dashboard ${p.id}`;
+  app.innerHTML = `<div class="padded"></div>`;
+  renderDashboard(app.querySelector(".padded"), p.id);
+}
+
 function skrinKalkulator() {
   tajukEl.textContent = "Kalkulator Entry / SL / TP";
   app.innerHTML = `<div class="padded"></div>`;
@@ -299,6 +307,10 @@ function route() {
   hentiCountdown(); // hentikan countdown lilin skrin sebelum (jika ada)
   hentiChecklist(); // hentikan pemasa panel Go/No-Go skrin sebelum (jika ada)
   switch (rute) {
+    case "dashboard":
+      skrinDashboard(arg);
+      setActiveNav("dashboard");
+      break;
     case "chart":
       skrinCarta(arg);
       setActiveNav("watchlist");

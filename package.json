@@ -1,7 +1,7 @@
 {
   "name": "analisis-web",
   "version": "1.0.0",
-  "description": "PWA forex — carta, screener, kalkulator & jurnal guna widget TradingView (tanpa AI, tanpa API key).",
+  "description": "PWA forex — carta, screener, kalkulator, jurnal & dashboard skor (enjin peraturan deterministik). Widget TradingView + kunci API data pasaran pilihan. Tiada AI/LLM, tiada backend.",
   "private": true,
   "type": "module",
   "scripts": {

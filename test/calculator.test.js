@@ -122,3 +122,29 @@ describe("saiz lot — nilai pip mengikut jenis pasangan", () => {
     expect(r.lot).toBeNull();
   });
 });
+
+describe("TP2 (jimat-belakang)", () => {
+  it("tp ialah alias tp1; tp2 lebih jauh dari tp1", () => {
+    const r = kiraDagangan({
+      pairId: "EURUSD",
+      arah: "Buy",
+      entry: 1.085,
+      atr: 0.0012,
+      pengganda: 1.5,
+      rr: 2,
+      rr2: 3,
+    });
+    expect(r.tp).toBe(r.tp1);
+    expect(r.tpPip).toBe(r.tp1Pip);
+    // Buy: TP2 di atas TP1
+    expect(r.tp2).toBeGreaterThan(r.tp1);
+    // R:R 3 vs 2 → TP2 pip = 1.5× TP1 pip
+    expect(r.tp2Pip).toBeCloseTo(r.tp1Pip * 1.5, 4);
+  });
+
+  it("rr2 lalai ≥3 walau tidak diberi", () => {
+    const r = kiraDagangan({ pairId: "EURUSD", arah: "Buy", entry: 1.085, atr: 0.0012, rr: 2 });
+    expect(r.rr2).toBeGreaterThanOrEqual(3);
+    expect(r.tp2).toBeGreaterThan(r.tp1);
+  });
+});

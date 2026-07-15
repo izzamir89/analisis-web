@@ -7,6 +7,8 @@ import { tambah as tambahJurnal, baca as bacaJurnal } from "./journal.js";
 import { statusMasaOrder } from "./sessions.js";
 import { bacaJSON, simpanJSON, escapeHtml } from "./store.js";
 import { amaranPendedahan, bakiRisikoHarian } from "./risk.js";
+import { ambilOHLC, bacaTetapanApi, simpanTetapanApi } from "./marketdata.js";
+import { atr as kiraAtr } from "./indicators.js";
 
 export const RR_MIN = 1.5;
 
@@ -39,6 +41,8 @@ export function kiraDagangan(input) {
   const atr = Number(input.atr);
   const pengganda = Number(input.pengganda) || 1.5;
   const rr = Number(input.rr) || 2;
+  // TP2 pada nisbah lebih tinggi (lalai 3, atau rr+1 jika rr sudah tinggi).
+  const rr2 = Number(input.rr2) > rr ? Number(input.rr2) : Math.max(3, rr + 1);
   const baki = Number(input.baki);
   const risikoPct = Number(input.risikoPct);
   const kadarUsd = Number(input.kadarUsd) > 0 ? Number(input.kadarUsd) : 1;
@@ -49,13 +53,16 @@ export function kiraDagangan(input) {
   if (ralat.length) return { ralat };
 
   const jarakSL = atr * pengganda; // dalam unit harga
-  const jarakTP = jarakSL * rr;
+  const jarakTP1 = jarakSL * rr;
+  const jarakTP2 = jarakSL * rr2;
   const arahNaik = arah === "Buy";
   const sl = arahNaik ? entry - jarakSL : entry + jarakSL;
-  const tp = arahNaik ? entry + jarakTP : entry - jarakTP;
+  const tp1 = arahNaik ? entry + jarakTP1 : entry - jarakTP1;
+  const tp2 = arahNaik ? entry + jarakTP2 : entry - jarakTP2;
 
   const slPip = jarakSL / pair.pip;
-  const tpPip = jarakTP / pair.pip;
+  const tp1Pip = jarakTP1 / pair.pip;
+  const tp2Pip = jarakTP2 / pair.pip;
 
   let lot = null;
   let amaunRisiko = null;
@@ -72,15 +79,23 @@ export function kiraDagangan(input) {
     amaran.push(`Nisbah R:R (${rr.toFixed(2)}) di bawah minimum disarankan ${RR_MIN}.`);
   }
 
+  const tp1R = round(tp1, pair.digit);
+  const tp1PipR = round(tp1Pip, 1);
   return {
     pair,
     arah,
     entry,
     sl: round(sl, pair.digit),
-    tp: round(tp, pair.digit),
     slPip: round(slPip, 1),
-    tpPip: round(tpPip, 1),
+    // TP1 utama + alias `tp`/`tpPip` (jimat-belakang untuk jurnal & ujian sedia ada).
+    tp1: tp1R,
+    tp1Pip: tp1PipR,
+    tp2: round(tp2, pair.digit),
+    tp2Pip: round(tp2Pip, 1),
+    tp: tp1R,
+    tpPip: tp1PipR,
     rr,
+    rr2,
     lot: lot != null ? round(lot, 2) : null,
     amaunRisiko: amaunRisiko != null ? round(amaunRisiko, 2) : null,
     amaran,
@@ -114,8 +129,16 @@ export function renderKalkulator(host) {
       <button type="button" class="btn-kecil" id="simpan-setup">💾 Simpan setup</button>
     </div>
 
+    <details class="kotak tetapan-api" id="tetapan-api">
+      <summary>⚙️ Kunci API data pasaran (pilihan)</summary>
+      <p class="nota">Masukkan kunci <b>Twelve Data</b> (tier percuma) untuk isi ATR & harga secara automatik. <b>Amaran:</b> kunci disimpan di peranti ini dan boleh dilihat sesiapa yang ada akses peranti/devtools — guna kunci percuma tanpa bil. Kosongkan untuk kekal input manual.</p>
+      <label>Kunci API<input id="api-key" type="password" autocomplete="off" placeholder="cth. abcd1234..."></label>
+      <button type="button" class="btn-kecil" id="simpan-api">💾 Simpan kunci</button>
+      <span id="status-api" class="nota"></span>
+    </details>
+
     <form id="form-kira" class="kira">
-      <p class="nota">Baca <b>harga semasa</b> dan <b>ATR(14)</b> dari carta TradingView, kemudian masukkan di bawah. Semua pengiraan dibuat di telefon — tiada data dihantar ke mana-mana (kecuali kadar tukaran bila akaun bukan-USD dipilih).</p>
+      <p class="nota">Baca <b>harga semasa</b> dan <b>ATR(14)</b> dari carta TradingView (atau tekan <b>Auto</b> jika kunci API disetkan), kemudian masukkan di bawah. Semua pengiraan dibuat di telefon — tiada data dihantar ke mana-mana (kecuali data pasaran & kadar tukaran bila diminta).</p>
       <label>Pasangan
         <select name="pairId">${opsiPair}</select>
       </label>
@@ -129,12 +152,19 @@ export function renderKalkulator(host) {
       </div>
       <div class="grid2">
         <label>Harga masuk<input name="entry" type="number" step="any" inputmode="decimal" placeholder="cth. 1.08500"></label>
-        <label>ATR(14)<input name="atr" type="number" step="any" inputmode="decimal" placeholder="cth. 0.00120"></label>
+        <label>ATR(14)
+          <span class="atr-baris">
+            <input name="atr" type="number" step="any" inputmode="decimal" placeholder="cth. 0.00120">
+            <button type="button" class="btn-kecil" id="muat-atr">⤓ Auto</button>
+          </span>
+        </label>
       </div>
+      <p id="status-atr" class="nota" aria-live="polite"></p>
       <div class="grid2">
         <label>Pengganda ATR (SL)<input name="pengganda" type="number" step="any" inputmode="decimal" value="1.5"></label>
-        <label>Nisbah R:R<input name="rr" type="number" step="any" inputmode="decimal" value="2"></label>
+        <label>Nisbah R:R (TP1)<input name="rr" type="number" step="any" inputmode="decimal" value="2"></label>
       </div>
+      <label>Nisbah R:R (TP2)<input name="rr2" type="number" step="any" inputmode="decimal" value="3"></label>
       <div class="grid2">
         <label>Baki akaun<input name="baki" type="number" step="any" inputmode="decimal" placeholder="cth. 1000"></label>
         <label>Risiko %<input name="risikoPct" type="number" step="any" inputmode="decimal" value="1"></label>
@@ -148,6 +178,48 @@ export function renderKalkulator(host) {
   const hasil = host.querySelector("#hasil-kira");
   const panelRisiko = host.querySelector("#panel-risiko");
   const muatEl = host.querySelector("#muat-setup");
+
+  // ---- Tetapan kunci API (Twelve Data) ----
+  const apiKeyEl = host.querySelector("#api-key");
+  const statusApiEl = host.querySelector("#status-api");
+  apiKeyEl.value = bacaTetapanApi().apikey;
+  statusApiEl.textContent = apiKeyEl.value ? "✅ Kunci disetkan." : "";
+  host.querySelector("#simpan-api").addEventListener("click", () => {
+    simpanTetapanApi({ apikey: apiKeyEl.value.trim() });
+    statusApiEl.textContent = apiKeyEl.value.trim() ? "✅ Kunci disimpan." : "Kunci dikosongkan.";
+  });
+
+  // ---- Auto-ATR: ambil OHLC 1J → kira ATR(14) → isi medan (harga juga jika kosong) ----
+  const statusAtrEl = host.querySelector("#status-atr");
+  host.querySelector("#muat-atr").addEventListener("click", async (e) => {
+    const btn = e.target;
+    const pair = cariPair(form.elements.pairId.value);
+    if (!bacaTetapanApi().apikey) {
+      statusAtrEl.textContent = "⚠️ Tiada kunci API — buka ⚙️ di atas atau isi ATR manual.";
+      return;
+    }
+    btn.disabled = true;
+    statusAtrEl.textContent = "⏳ Mengambil data…";
+    const { candles, sumber, ralat } = await ambilOHLC(pair.id, "60");
+    btn.disabled = false;
+    if (!candles || !candles.length) {
+      statusAtrEl.textContent = `⚠️ ${ralat || "Gagal ambil data"} — isi ATR manual.`;
+      return;
+    }
+    const nilaiAtr = kiraAtr(candles, 14)
+      .filter((v) => v != null)
+      .pop();
+    if (nilaiAtr == null) {
+      statusAtrEl.textContent = "⚠️ Data tak cukup untuk ATR(14) — isi manual.";
+      return;
+    }
+    form.elements.atr.value = round(nilaiAtr, pair.digit);
+    if (!form.elements.entry.value) {
+      form.elements.entry.value = round(candles[candles.length - 1].c, pair.digit);
+    }
+    const lbl = { api: "langsung", cache: "cache" }[sumber] || sumber;
+    statusAtrEl.textContent = `✅ ATR(14) & harga diisi (sumber: ${lbl}). Boleh disunting.`;
+  });
 
   // ---- Panel risiko: had kerugian harian + pendedahan mata wang terbuka ----
   function lukisRisiko() {
@@ -260,8 +332,8 @@ export function renderKalkulator(host) {
         <table class="hasil">
           <tr><td>Harga masuk</td><td>${r.entry}</td></tr>
           <tr><td>Stop Loss</td><td class="sl">${r.sl} <span class="pip">(${r.slPip} pip)</span></td></tr>
-          <tr><td>Take Profit</td><td class="tp">${r.tp} <span class="pip">(${r.tpPip} pip)</span></td></tr>
-          <tr><td>R:R</td><td>${r.rr}</td></tr>
+          <tr><td>Take Profit 1</td><td class="tp">${r.tp1} <span class="pip">(${r.tp1Pip} pip · R:R ${r.rr})</span></td></tr>
+          <tr><td>Take Profit 2</td><td class="tp">${r.tp2} <span class="pip">(${r.tp2Pip} pip · R:R ${r.rr2})</span></td></tr>
           ${lotBaris}
         </table>
         ${amaranHtml}
@@ -276,6 +348,7 @@ export function renderKalkulator(host) {
         entry: r.entry,
         sl: r.sl,
         tp: r.tp,
+        tp2: r.tp2,
         rr: r.rr,
         lot: r.lot,
         amaunRisiko: r.amaunRisiko,

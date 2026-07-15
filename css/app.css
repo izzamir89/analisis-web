@@ -535,6 +535,121 @@ table.hasil td:last-child {
   font-size: 13px;
   font-weight: 600;
 }
+
+/* Baris ATR: input + butang Auto bersebelahan */
+.atr-baris {
+  display: flex;
+  gap: 6px;
+  align-items: stretch;
+}
+.atr-baris input {
+  flex: 1;
+  min-width: 0;
+}
+.atr-baris .btn-kecil {
+  white-space: nowrap;
+}
+
+/* Panel tetapan kunci API */
+.tetapan-api summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.tetapan-api label {
+  display: block;
+  margin: 8px 0;
+}
+.tetapan-api #status-api {
+  margin-left: 8px;
+}
+
+/* ---- Dashboard skor (gaya Bloomberg) ---- */
+.verdict-buy {
+  color: var(--hijau);
+  font-weight: 700;
+}
+.verdict-sell {
+  color: var(--merah);
+  font-weight: 700;
+}
+.verdict-wait {
+  color: var(--kuning);
+  font-weight: 700;
+}
+.btn-muat {
+  white-space: nowrap;
+}
+.db-confidence {
+  border-left: 5px solid var(--garis);
+}
+.db-confidence.verdict-buy {
+  border-left-color: var(--hijau);
+}
+.db-confidence.verdict-sell {
+  border-left-color: var(--merah);
+}
+.db-confidence.verdict-wait {
+  border-left-color: var(--kuning);
+}
+.db-conf-atas {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.db-verdict {
+  font-size: 28px;
+  font-weight: 800;
+}
+.db-gred {
+  font-size: 14px;
+  opacity: 0.9;
+}
+.db-jelas {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--teks2, inherit);
+}
+.db-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+.db-grid h3 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+/* Bar kekuatan mata wang */
+.kk-baris {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 5px 0;
+}
+.kk-mw {
+  width: 38px;
+  font-weight: 700;
+  font-size: 13px;
+}
+.kk-bar {
+  flex: 1;
+  height: 10px;
+  background: var(--bg3);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.kk-isi {
+  display: block;
+  height: 100%;
+  background: var(--aksen);
+}
+.kk-nilai {
+  width: 32px;
+  text-align: right;
+  font-size: 13px;
+}
 .berita-kal {
   height: 60vh;
   min-height: 380px;
