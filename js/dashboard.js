@@ -41,8 +41,8 @@ function num(x, d = 5) {
 export function renderDashboard(host, pairId) {
   const p = cariPair(pairId);
   host.innerHTML = `
-    <div class="bar-pilih">
-      <select id="pilih-pair">${PAIRS.map(
+    <div class="db-bar">
+      <select id="pilih-pair" class="db-pair">${PAIRS.map(
         (x) => `<option value="${x.id}" ${x.id === p.id ? "selected" : ""}>${x.id}</option>`
       ).join("")}</select>
       <button class="btn-utama btn-muat" id="muat-data">⤓ Muat data</button>

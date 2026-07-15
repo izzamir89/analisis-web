@@ -576,7 +576,18 @@ table.hasil td:last-child {
   color: var(--kuning);
   font-weight: 700;
 }
+/* Bar atas dashboard: pemilih pasangan + butang muat (susun menegak, penuh lebar) */
+.db-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.db-pair {
+  width: 100%;
+}
 .btn-muat {
+  width: 100%;
   white-space: nowrap;
 }
 .db-confidence {
