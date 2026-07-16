@@ -18,7 +18,7 @@
     <main id="app"><!-- skrin dipaparkan di sini --></main>
 
     <nav class="bottomnav" aria-label="Navigasi utama">
-      <a class="navbtn" data-rute="dashboard" href="#dashboard/EURUSD" aria-label="Dashboard">
+      <a class="navbtn" data-rute="dashboard" href="#dashboard" aria-label="Dashboard">
         <span class="ikon" aria-hidden="true">📊</span><span>Skor</span>
       </a>
       <a class="navbtn aktif" data-rute="watchlist" href="#watchlist" aria-label="Watchlist">
@@ -37,6 +37,11 @@
         <span class="ikon" aria-hidden="true">📒</span><span>Jurnal</span>
       </a>
     </nav>
+
+    <div id="sw-toast" class="sw-toast" role="status" hidden>
+      <span>✨ Versi baharu tersedia</span>
+      <button id="sw-toast-btn" type="button">Muat semula</button>
+    </div>
 
     <script type="module" src="./js/app.js"></script>
   </body>

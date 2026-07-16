@@ -1,9 +1,11 @@
 // Skrin Dashboard — gabung data pasaran sebenar + indikator + kekuatan + SMC + sesi
-// + berita jadi satu skor (enjin peraturan deterministik). "Muat data" dicetus
-// pengguna supaya kuota API dikawal. Degradasi anggun bila data tiada.
+// + berita jadi satu skor (enjin peraturan deterministik). Fetch dicetus pengguna
+// supaya kuota API dikawal: "Muat data" ambil hanya 3 TF pasangan semasa (≈3 kredit);
+// kekuatan mata wang (7 pasangan lagi) ialah butang berasingan supaya pengguna kawal
+// kredit. Degradasi anggun bila data tiada.
 
 import { PAIRS, cariPair } from "./pairs.js";
-import { ambilOHLC, adaKunciApi } from "./marketdata.js";
+import { ambilOHLC, adaKunciApi, statusKuota } from "./marketdata.js";
 import { ringkasanIndikator, kekuatanMataWang } from "./indicators.js";
 import { analisaSMC } from "./smc.js";
 import { skorSetup, jelaskan } from "./scoring.js";
@@ -15,6 +17,7 @@ import { escapeHtml } from "./store.js";
 
 const KELAS_VERDICT = { BUY: "verdict-buy", SELL: "verdict-sell", WAIT: "verdict-wait" };
 const BINTANG = { "A+": "⭐⭐⭐⭐⭐", A: "⭐⭐⭐⭐", B: "⭐⭐⭐", C: "⭐⭐", D: "⭐" };
+const SPINNER = '<span class="spinner" aria-hidden="true"></span>';
 
 // % perubahan harian dari lilin (tutup terakhir vs sebelum).
 function perubahanHarian(candles) {
@@ -40,6 +43,12 @@ function num(x, d = 5) {
 
 export function renderDashboard(host, pairId) {
   const p = cariPair(pairId);
+  try {
+    localStorage.setItem("db_pair", p.id); // ingat pasangan terakhir dilihat
+  } catch {
+    /* abai */
+  }
+
   host.innerHTML = `
     <div class="db-bar">
       <select id="pilih-pair" class="db-pair">${PAIRS.map(
@@ -47,80 +56,119 @@ export function renderDashboard(host, pairId) {
       ).join("")}</select>
       <button class="btn-utama btn-muat" id="muat-data">⤓ Muat data</button>
     </div>
-    <p class="nota">Skor deterministik (enjin peraturan, <b>bukan AI/ML</b>) dari data pasaran sebenar. Tekan <b>Muat data</b> — setiap muat guna kuota API. Nilai indikator mungkin beza sedikit dari broker anda.</p>
+    <p class="nota">Skor deterministik (enjin peraturan, <b>bukan AI/ML</b>) dari data pasaran sebenar. "Muat data" ambil ~3 kredit; kekuatan mata wang butang berasingan. Nilai mungkin beza sedikit dari broker.</p>
+    <div id="db-kuota" class="db-kuota"></div>
     <div id="db-status" class="nota"></div>
     <div id="db-isi"></div>`;
+
+  const statusEl = host.querySelector("#db-status");
+  const isiEl = host.querySelector("#db-isi");
+  const kuotaEl = host.querySelector("#db-kuota");
+
+  // Keadaan dashboard semasa — dikongsi antara muat / kekuatan / lukis.
+  const st = {
+    ind1h: null,
+    ind4h: null,
+    indD: null,
+    smc: null,
+    kekuatan: null,
+    candles1h: null,
+    candlesD: null,
+    dimuat: false,
+  };
 
   host.querySelector("#pilih-pair").addEventListener("change", (e) => {
     location.hash = `#dashboard/${e.target.value}`;
   });
   host.querySelector("#muat-data").addEventListener("click", muat);
 
-  const statusEl = host.querySelector("#db-status");
-  const isiEl = host.querySelector("#db-isi");
-  let candles1h = null; // disimpan untuk backtest tanpa panggilan API tambahan
+  function lukisKuota() {
+    const q = statusKuota();
+    kuotaEl.textContent = `Kuota API — minit ${q.minitBaki}/${q.minitHad} · hari ${q.hariDigunakan}/${q.hariHad}`;
+  }
 
+  // Ambil 3 TF pasangan semasa (murah). Kekuatan diambil berasingan.
   async function muat() {
     if (!adaKunciApi()) {
-      statusEl.innerHTML = `⚠️ Tiada kunci API. Buka <a href="#calc">Kalkulator → ⚙️ Kunci API</a> untuk masukkan kunci Twelve Data percuma.`;
+      isiEl.innerHTML = "";
+      statusEl.innerHTML = `⚠️ Tiada kunci API. Buka <a href="#calc">Kalkulator → ⚙️ Kunci API</a> untuk kunci Twelve Data percuma.`;
       return;
     }
     const btn = host.querySelector("#muat-data");
     btn.disabled = true;
-    statusEl.textContent = "⏳ Mengambil OHLC (1J, 4J, Harian)…";
+    statusEl.innerHTML = `${SPINNER} Mengambil OHLC (1J, 4J, Harian)…`;
 
     const [r1, r4, rd] = await Promise.all([
       ambilOHLC(p.id, "60"),
       ambilOHLC(p.id, "240"),
       ambilOHLC(p.id, "D"),
     ]);
-    candles1h = r1.candles || null;
-    const ind1h = r1.candles ? ringkasanIndikator(r1.candles) : null;
-    const ind4h = r4.candles ? ringkasanIndikator(r4.candles) : null;
-    const indD = rd.candles ? ringkasanIndikator(rd.candles) : null;
-    const smc = r1.candles ? analisaSMC(r1.candles) : null;
+    st.candles1h = r1.candles || null;
+    st.candlesD = rd.candles || null;
+    st.ind1h = r1.candles ? ringkasanIndikator(r1.candles) : null;
+    st.ind4h = r4.candles ? ringkasanIndikator(r4.candles) : null;
+    st.indD = rd.candles ? ringkasanIndikator(rd.candles) : null;
+    st.smc = r1.candles ? analisaSMC(r1.candles) : null;
+    st.kekuatan = null; // pasangan berubah → kekuatan perlu dikira semula
+    st.dimuat = true;
 
-    // Kekuatan mata wang — dari perubahan harian pasangan (cache-dahulu, jimat kuota).
-    statusEl.textContent = "⏳ Mengira kekuatan mata wang…";
-    const perubahan = {};
-    let lengkap = 0;
-    for (const pr of PAIRS) {
-      const rr = pr.id === p.id ? rd : await ambilOHLC(pr.id, "D", { outputsize: 30 });
-      const ch = perubahanHarian(rr.candles);
-      if (ch != null) {
-        perubahan[pr.id] = ch;
-        lengkap++;
-      }
+    lukisKuota();
+    btn.disabled = false;
+
+    if (!st.ind1h) {
+      statusEl.textContent = "";
+      isiEl.innerHTML = `<div class="kotak db-kosong">
+        <b>⚠️ Data tidak tersedia</b>
+        <p class="nota">${escapeHtml(r1.ralat || "Gagal ambil data 1J.")} Semak kunci API / kuota, atau cuba sebentar lagi. Emas & sesetengah pasangan mungkin liputan berbeza di tier percuma.</p>
+      </div>`;
+      return;
     }
-    const kekuatan = kekuatanMataWang(perubahan);
+    statusEl.textContent = `Sumber: ${r1.sumber}.`;
+    kiraDanLukis();
+  }
 
+  // Kira kekuatan mata wang — 7 pasangan lagi (opt-in, ≈7 kredit, cache 6 jam).
+  async function muatKekuatan() {
+    const btn = isiEl.querySelector("#muat-kekuatan");
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = `${SPINNER} Mengira…`;
+    }
+    const perubahan = {};
+    for (const pr of PAIRS) {
+      const rr =
+        pr.id === p.id && st.candlesD
+          ? { candles: st.candlesD }
+          : await ambilOHLC(pr.id, "D", { outputsize: 30 });
+      const ch = perubahanHarian(rr.candles);
+      if (ch != null) perubahan[pr.id] = ch;
+    }
+    st.kekuatan = kekuatanMataWang(perubahan);
+    lukisKuota();
+    kiraDanLukis();
+  }
+
+  // Kira skor dari keadaan semasa (sesi/berita segar) & lukis semua panel.
+  function kiraDanLukis() {
     const now = new Date();
     const statusSesi = statusMasaOrder(now);
     const berita = jarakBerita(now);
     const hasil = skorSetup({
       pairId: p.id,
-      ind1h,
-      ind4h,
-      indD,
-      kekuatan,
-      smc,
+      ind1h: st.ind1h,
+      ind4h: st.ind4h,
+      indD: st.indD,
+      kekuatan: st.kekuatan,
+      smc: st.smc,
       statusSesi,
       berita,
       pasaranTutup: pasaranTutup(now),
     });
-
-    const sumberTeks =
-      r1.sumber === "manual" && !ind1h
-        ? "⚠️ Data 1J tidak tersedia — sebahagian skor dianggar."
-        : `Sumber: ${r1.sumber}. Kekuatan: ${lengkap}/${PAIRS.length} pasangan.`;
-    statusEl.textContent = sumberTeks;
-    btn.disabled = false;
-
-    lukis({ hasil, ind1h, ind4h, indD, kekuatan, smc, statusSesi, berita });
+    lukis(hasil, statusSesi, berita);
   }
 
-  function lukis(d) {
-    const { hasil, ind1h, ind4h, indD, kekuatan, smc, statusSesi, berita } = d;
+  function lukis(hasil, statusSesi, berita) {
+    const { ind1h, ind4h, indD, smc, kekuatan } = st;
     const kelasV = KELAS_VERDICT[hasil.verdict] || "";
     const tfRows = [
       ["1 Jam", ind1h],
@@ -133,18 +181,22 @@ export function renderDashboard(host, pairId) {
       })
       .join("");
 
-    const barKekuatan = Object.entries(kekuatan)
-      .sort((a, b) => b[1] - a[1])
-      .map(
-        ([mw, v]) =>
-          `<div class="kk-baris"><span class="kk-mw">${escapeHtml(mw)}</span>
-             <span class="kk-bar"><span class="kk-isi" style="width:${v * 10}%"></span></span>
-             <span class="kk-nilai">${v}</span></div>`
-      )
-      .join("");
+    const barKekuatan = kekuatan
+      ? Object.entries(kekuatan)
+          .sort((a, b) => b[1] - a[1])
+          .map(
+            ([mw, v]) =>
+              `<div class="kk-baris"><span class="kk-mw">${escapeHtml(mw)}</span>
+                 <span class="kk-bar"><span class="kk-isi" style="width:${v * 10}%"></span></span>
+                 <span class="kk-nilai">${v}</span></div>`
+          )
+          .join("")
+      : `<p class="nota">Belum dikira — jimat kredit.</p>
+         <button class="btn-kecil" id="muat-kekuatan">⤓ Kira kekuatan (≈7 kredit)</button>`;
 
     const rsiKelas = ind1h && ind1h.rsi != null ? (ind1h.rsi >= 70 ? "verdict-sell" : ind1h.rsi <= 30 ? "verdict-buy" : "") : ""; // prettier-ignore
     const macdKelas = ind1h && ind1h.macdHist != null ? (ind1h.macdHist > 0 ? "verdict-buy" : "verdict-sell") : ""; // prettier-ignore
+    const adxKuat = ind1h && ind1h.adx != null && ind1h.adx >= 25;
 
     const smcRows = smc
       ? `<tr><td>BOS</td><td class="${smc.bos.arah ? (smc.bos.arah === "bull" ? "verdict-buy" : "verdict-sell") : ""}">${smc.bos.arah ? smc.bos.arah + " ✅" : "—"}</td></tr>
@@ -178,14 +230,14 @@ export function renderDashboard(host, pairId) {
         </div>
         <div class="kotak">
           <h3>Kekuatan Mata Wang</h3>
-          ${barKekuatan || '<p class="nota">Tiada data kekuatan.</p>'}
+          ${barKekuatan}
         </div>
         <div class="kotak">
           <h3>Momentum & Volatiliti (1J)</h3>
           <table class="hasil">
             <tr><td>RSI(14)</td><td class="${rsiKelas}">${ind1h && ind1h.rsi != null ? ind1h.rsi.toFixed(1) : "—"}</td></tr>
             <tr><td>MACD hist</td><td class="${macdKelas}">${ind1h ? num(ind1h.macdHist) : "—"}</td></tr>
-            <tr><td>ADX(14)</td><td>${ind1h && ind1h.adx != null ? ind1h.adx.toFixed(1) : "—"}</td></tr>
+            <tr><td>ADX(14)</td><td class="${adxKuat ? "adx-kuat" : ""}">${ind1h && ind1h.adx != null ? ind1h.adx.toFixed(1) + (adxKuat ? " ▲" : "") : "—"}</td></tr>
             <tr><td>ATR(14)</td><td>${ind1h ? num(ind1h.atr, cariPair(p.id).digit) : "—"}</td></tr>
           </table>
         </div>
@@ -204,18 +256,20 @@ export function renderDashboard(host, pairId) {
 
       <div class="kotak" id="db-backtest">
         <h3>Backtest tetingkap-pendek (1J)</h3>
-        <p class="nota">Main semula enjin skor atas ~${candles1h ? candles1h.length : 0} lilin 1J yang dimuat (≈ ${candles1h ? Math.round(candles1h.length / 24) : 0} hari). Ini <b>semakan pantas</b>, bukan backtest sejarah penuh.</p>
+        <p class="nota">Main semula enjin skor atas ~${st.candles1h ? st.candles1h.length : 0} lilin 1J (≈ ${st.candles1h ? Math.round(st.candles1h.length / 24) : 0} hari). <b>Semakan pantas</b>, bukan backtest sejarah penuh.</p>
         <button class="btn-kecil" id="jalan-backtest">▶ Jalankan backtest</button>
         <div id="db-bt-hasil"></div>
       </div>`;
 
+    const kkBtn = isiEl.querySelector("#muat-kekuatan");
+    if (kkBtn) kkBtn.addEventListener("click", muatKekuatan);
     const btBtn = isiEl.querySelector("#jalan-backtest");
     if (btBtn) btBtn.addEventListener("click", jalanBacktest);
   }
 
   function jalanBacktest() {
     const out = isiEl.querySelector("#db-bt-hasil");
-    if (!candles1h || candles1h.length < 60) {
+    if (!st.candles1h || st.candles1h.length < 60) {
       out.innerHTML = `<p class="nota">⚠️ Data 1J tak cukup untuk backtest.</p>`;
       return;
     }
@@ -233,7 +287,7 @@ export function renderDashboard(host, pairId) {
       });
       return { verdict: h.verdict, skor: h.skor };
     };
-    const trades = backtest(candles1h, { skorFn, pairId: p.id, threshold: 60, mula: 200 });
+    const trades = backtest(st.candles1h, { skorFn, pairId: p.id, threshold: 60, mula: 200 });
     const r = ringkasan(trades);
     if (!trades.length) {
       out.innerHTML = `<p class="nota">Tiada isyarat BUY/SELL cukup kuat (ambang 60) dalam tetingkap ini.</p>`;
@@ -250,7 +304,8 @@ export function renderDashboard(host, pairId) {
       <p class="nota">Sampel kecil — jangan terlalu bergantung. Simulasi entri pada tutup lilin, SL/TP ikut ATR.</p>`;
   }
 
-  // Auto-muat jika kunci ada; jika tidak, tunjuk panduan.
+  // Init: papar kuota; auto-muat jika kunci ada, jika tidak beri panduan.
+  lukisKuota();
   if (adaKunciApi()) muat();
   else statusEl.innerHTML = `Tekan <b>Muat data</b> selepas set kunci API di <a href="#calc">Kalkulator → ⚙️</a>.`; // prettier-ignore
 }

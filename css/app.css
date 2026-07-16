@@ -452,6 +452,40 @@ table.hasil td:last-child {
   background: var(--aksen);
 }
 
+/* Toast kemas kini PWA — di atas nav bawah */
+.sw-toast {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--nav-h) + env(safe-area-inset-bottom) + 10px);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  background: var(--bg3);
+  border: 1px solid var(--aksen);
+  border-radius: 12px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+  font-size: 14px;
+  font-weight: 600;
+}
+.sw-toast[hidden] {
+  display: none;
+}
+.sw-toast button {
+  flex: 0 0 auto;
+  background: var(--aksen);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 14px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+}
+
 /* Panel Go/No-Go */
 .gng {
   margin: 0 0 10px;
@@ -587,6 +621,36 @@ table.hasil td:last-child {
 }
 
 /* ---- Dashboard skor (gaya Bloomberg) ---- */
+.db-kuota {
+  font-size: 12px;
+  color: var(--teks2);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: 6px;
+}
+.db-kosong {
+  border-left: 5px solid var(--kuning);
+}
+.adx-kuat {
+  color: var(--aksen);
+  font-weight: 700;
+}
+/* Spinner memuat */
+.spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  vertical-align: -2px;
+  margin-right: 4px;
+  border: 2px solid var(--garis);
+  border-top-color: var(--aksen);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .verdict-buy {
   color: var(--hijau);
   font-weight: 700;

@@ -16,8 +16,9 @@ const KUNCI_TETAPAN = "md_tetapan";
 const KUNCI_KUOTA = "md_kuota";
 const PROVIDER_LALAI = "twelvedata";
 
-// Had kadar tier percuma Twelve Data = 8 req/min; hadkan 7 untuk margin selamat.
+// Had kadar tier percuma Twelve Data = 8 req/min & 800/hari; hadkan 7/min untuk margin.
 const HAD_SEMINIT = 7;
+const HAD_HARIAN = 800;
 
 // TTL cache ikut interval (ms) — lilin cuma basi bila bar baharu tutup.
 const TTL = { 60: 10 * 60_000, 240: 30 * 60_000, D: 6 * 3_600_000 };
@@ -98,17 +99,53 @@ function minitSekarang(now) {
   return Math.floor(now / 60_000);
 }
 
+function hariSekarang(now) {
+  return Math.floor(now / 86_400_000);
+}
+
+// Baca kiraan kuota tersimpan, tetap semula bila minit/hari bertukar.
+function bacaKuota(now) {
+  const q = bacaJSON(KUNCI_KUOTA, {});
+  const m = minitSekarang(now);
+  const h = hariSekarang(now);
+  return {
+    minit: m,
+    kiraMinit: q.minit === m ? q.kiraMinit || 0 : 0,
+    hari: h,
+    kiraHari: q.hari === h ? q.kiraHari || 0 : 0,
+  };
+}
+
 // Berapa panggilan lagi dibenarkan dalam minit semasa.
 export function kuotaBaki(now = Date.now()) {
-  const q = bacaJSON(KUNCI_KUOTA, { minit: 0, kira: 0 });
-  if (q.minit !== minitSekarang(now)) return HAD_SEMINIT;
-  return Math.max(0, HAD_SEMINIT - q.kira);
+  return Math.max(0, HAD_SEMINIT - bacaKuota(now).kiraMinit);
+}
+
+// Kuota harian: { digunakan, had, baki }.
+export function kuotaHarian(now = Date.now()) {
+  const digunakan = bacaKuota(now).kiraHari;
+  return { digunakan, had: HAD_HARIAN, baki: Math.max(0, HAD_HARIAN - digunakan) };
+}
+
+// Ringkasan gabung untuk paparan UI.
+export function statusKuota(now = Date.now()) {
+  const q = bacaKuota(now);
+  return {
+    minitBaki: Math.max(0, HAD_SEMINIT - q.kiraMinit),
+    minitHad: HAD_SEMINIT,
+    hariDigunakan: q.kiraHari,
+    hariHad: HAD_HARIAN,
+  };
 }
 
 function catatPanggilan(now) {
-  const m = minitSekarang(now);
-  const q = bacaJSON(KUNCI_KUOTA, { minit: 0, kira: 0 });
-  simpanJSON(KUNCI_KUOTA, { minit: m, kira: q.minit === m ? q.kira + 1 : 1 });
+  const q = bacaKuota(now);
+  simpanJSON(KUNCI_KUOTA, {
+    minit: q.minit,
+    kiraMinit: q.kiraMinit + 1,
+    hari: q.hari,
+    kiraHari: q.kiraHari + 1,
+  });
 }
 
 // ---- Ambil OHLC (I/O) ----

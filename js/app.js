@@ -273,7 +273,14 @@ function skrinScreener() {
 }
 
 function skrinDashboard(pairId) {
-  const p = cariPair(pairId);
+  // Tiada arg (cth tekan tab "Skor") → guna pasangan terakhir dilihat.
+  let last = null;
+  try {
+    last = localStorage.getItem("db_pair");
+  } catch {
+    /* abai */
+  }
+  const p = cariPair(pairId || last || "EURUSD");
   tajukEl.textContent = `Dashboard ${p.id}`;
   app.innerHTML = `<div class="padded"></div>`;
   renderDashboard(app.querySelector(".padded"), p.id);
@@ -347,19 +354,47 @@ window.addEventListener("DOMContentLoaded", () => {
   mulaTinjauan(); // semak alert tersimpan semasa app dibuka
   // Daftar service worker (PWA boleh-pasang)
   if ("serviceWorker" in navigator) {
-    // updateViaCache:"none" → pelayar sentiasa semak SW baharu dari rangkaian
-    // (abai cache HTTP 10-minit), jadi deploy baharu dikesan segera.
-    navigator.serviceWorker
-      .register("./service-worker.js", { updateViaCache: "none" })
-      .catch(() => {});
-    // Auto-reload SEKALI bila SW baharu ambil alih — elak paparan basi selepas deploy.
-    // Hanya reload jika halaman sudah dikawal SW lama (bukan pemasangan pertama).
-    const adaController = !!navigator.serviceWorker.controller;
-    let dahReload = false;
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      if (dahReload || !adaController) return;
-      dahReload = true;
-      location.reload();
-    });
+    daftarServiceWorker();
   }
 });
+
+// Daftar SW + tunjuk toast "versi baharu" bila SW baharu MENUNGGU. Pengguna kawal
+// bila muat semula (elak reload mengejut di tengah kerja).
+function daftarServiceWorker() {
+  const sw = navigator.serviceWorker;
+  // Reload SEKALI selepas SW baharu ambil alih (dicetus oleh SKIP_WAITING).
+  let dahReload = false;
+  sw.addEventListener("controllerchange", () => {
+    if (dahReload) return;
+    dahReload = true;
+    location.reload();
+  });
+
+  sw.register("./service-worker.js", { updateViaCache: "none" })
+    .then((reg) => {
+      const papar = (worker) => tunjukToastKemasKini(worker);
+      // Sudah ada versi menunggu (dikesan sebelum pendaftaran selesai).
+      if (reg.waiting && navigator.serviceWorker.controller) papar(reg.waiting);
+      // Versi baharu ditemui semasa sesi ini.
+      reg.addEventListener("updatefound", () => {
+        const baharu = reg.installing;
+        if (!baharu) return;
+        baharu.addEventListener("statechange", () => {
+          if (baharu.state === "installed" && navigator.serviceWorker.controller) papar(baharu);
+        });
+      });
+    })
+    .catch(() => {});
+}
+
+// Papar toast dengan butang "Muat semula". Tekan → suruh SW menunggu ambil alih.
+function tunjukToastKemasKini(worker) {
+  const el = document.getElementById("sw-toast");
+  if (!el || el.dataset.tunjuk === "1") return;
+  el.dataset.tunjuk = "1";
+  el.hidden = false;
+  el.querySelector("#sw-toast-btn").addEventListener("click", () => {
+    worker.postMessage({ type: "SKIP_WAITING" });
+    el.hidden = true;
+  });
+}

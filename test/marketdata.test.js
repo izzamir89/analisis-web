@@ -9,6 +9,8 @@ import {
   simpanTetapanApi,
   adaKunciApi,
   kuotaBaki,
+  kuotaHarian,
+  statusKuota,
 } from "../js/marketdata.js";
 import { cariPair } from "../js/pairs.js";
 
@@ -79,8 +81,31 @@ describe("tetapan API", () => {
   });
 });
 
-describe("kuotaBaki", () => {
-  it("penuh bila minit baharu", () => {
+describe("kuota", () => {
+  it("penuh bila tiada rekod", () => {
     expect(kuotaBaki(0)).toBe(7);
+    expect(kuotaHarian(0).baki).toBe(800);
+  });
+
+  it("statusKuota gabung min + hari dari rekod tersimpan", () => {
+    // Rekod dalam minit & hari yang sama dengan now=0.
+    localStorage.setItem(
+      "md_kuota",
+      JSON.stringify({ minit: 0, kiraMinit: 3, hari: 0, kiraHari: 10 })
+    );
+    const s = statusKuota(0);
+    expect(s.minitBaki).toBe(4); // 7 − 3
+    expect(s.hariDigunakan).toBe(10);
+    expect(s.hariHad).toBe(800);
+  });
+
+  it("kiraan minit tetap semula bila minit bertukar, harian kekal", () => {
+    localStorage.setItem(
+      "md_kuota",
+      JSON.stringify({ minit: 0, kiraMinit: 7, hari: 0, kiraHari: 10 })
+    );
+    const nowMinitBaru = 90_000; // 1.5 minit, hari sama
+    expect(kuotaBaki(nowMinitBaru)).toBe(7); // minit reset
+    expect(kuotaHarian(nowMinitBaru).digunakan).toBe(10); // hari kekal
   });
 });
