@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { backtest } from "../js/backtest.js";
+import { backtest, backtestAsync } from "../js/backtest.js";
 import { ringkasan, ditutup } from "../js/analytics.js";
 
 const flat = (t) => ({ t, o: 10, h: 10.5, l: 9.5, c: 10 });
@@ -73,5 +73,75 @@ describe("backtest", () => {
   it("data terlalu pendek / tiada skorFn → []", () => {
     expect(backtest([flat(0), flat(1)], opts(buyDi3))).toEqual([]);
     expect(backtest(winCandles, { atrPeriod: 2, mula: 3 })).toEqual([]);
+  });
+
+  it("rakam skor masuk untuk penjaluran kebarangkalian", () => {
+    const t = backtest(
+      winCandles,
+      opts((_win, i) => (i === 3 ? { verdict: "BUY", skor: 88 } : { verdict: "WAIT" }))
+    );
+    expect(t[0].skor).toBe(88);
+  });
+
+  it("skor di bawah threshold ditolak walaupun verdict BUY", () => {
+    const t = backtest(
+      winCandles,
+      opts((_win, i) => (i === 3 ? { verdict: "BUY", skor: 55 } : { verdict: "WAIT" }), {
+        threshold: 70,
+      })
+    );
+    expect(t).toEqual([]);
+  });
+});
+
+describe("lookback", () => {
+  it("hadkan tetingkap yang dilihat skorFn", () => {
+    let maksPanjang = 0;
+    backtest(
+      winCandles,
+      opts(
+        (win, i) => {
+          maksPanjang = Math.max(maksPanjang, win.length);
+          return i === 3 ? { verdict: "BUY" } : { verdict: "WAIT" };
+        },
+        { lookback: 2 }
+      )
+    );
+    expect(maksPanjang).toBe(2);
+  });
+
+  it("lookback 0 → tetingkap mengembang penuh dari indeks 0", () => {
+    const panjang = [];
+    backtest(
+      winCandles,
+      opts(
+        (win) => {
+          panjang.push(win.length);
+          return { verdict: "WAIT" };
+        },
+        { lookback: 0 }
+      )
+    );
+    expect(panjang[0]).toBe(4); // slice(0, 3+1)
+    expect(panjang[panjang.length - 1]).toBeGreaterThan(panjang[0]);
+  });
+});
+
+describe("backtestAsync", () => {
+  it("hasilkan dagangan yang SAMA seperti versi segerak", async () => {
+    const segerak = backtest(winCandles, opts(buyDi3));
+    const takSegerak = await backtestAsync(winCandles, opts(buyDi3));
+    expect(takSegerak).toEqual(segerak);
+  });
+
+  it("lapor kemajuan dan sentiasa tamat pada 1", async () => {
+    const kemajuan = [];
+    await backtestAsync(winCandles, opts(buyDi3, { ketulan: 1 }), (p) => kemajuan.push(p));
+    expect(kemajuan.length).toBeGreaterThan(0);
+    expect(kemajuan[kemajuan.length - 1]).toBe(1);
+    for (const p of kemajuan) {
+      expect(p).toBeGreaterThanOrEqual(0);
+      expect(p).toBeLessThanOrEqual(1);
+    }
   });
 });

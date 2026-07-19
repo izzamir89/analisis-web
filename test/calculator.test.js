@@ -34,6 +34,35 @@ describe("kiraDagangan — arah & paras", () => {
   });
 });
 
+describe("kiraDagangan — TP3", () => {
+  const asas = { pairId: "EURUSD", entry: 1.085, atr: 0.0012, pengganda: 1.5, rr: 2 };
+
+  it("Buy: TP3 lebih jauh daripada TP2, jarak mengikut rr3", () => {
+    const r = kiraDagangan({ ...asas, arah: "Buy" });
+    expect(r.rr3).toBe(4); // lalai max(4, rr2+1) dengan rr2 = 3
+    expect(r.tp3).toBeCloseTo(1.0922, 4); // 1.085 + 0.0018 × 4
+    expect(r.tp3).toBeGreaterThan(r.tp2);
+    expect(r.tp3Pip).toBeCloseTo(72, 1);
+  });
+
+  it("Sell: TP3 di bawah TP2 (simetri)", () => {
+    const r = kiraDagangan({ ...asas, arah: "Sell" });
+    expect(r.tp3).toBeCloseTo(1.0778, 4);
+    expect(r.tp3).toBeLessThan(r.tp2);
+  });
+
+  it("rr3 tersuai dihormati; nilai <= rr2 ditolak ke lalai", () => {
+    expect(kiraDagangan({ ...asas, arah: "Buy", rr3: 6 }).rr3).toBe(6);
+    expect(kiraDagangan({ ...asas, arah: "Buy", rr3: 2 }).rr3).toBe(4);
+  });
+
+  it("alias tp/tpPip lama masih menunjuk TP1 (jurnal bergantung padanya)", () => {
+    const r = kiraDagangan({ ...asas, arah: "Buy" });
+    expect(r.tp).toBe(r.tp1);
+    expect(r.tpPip).toBe(r.tp1Pip);
+  });
+});
+
 describe("kiraDagangan — amaran & ralat", () => {
   it("amaran bila R:R di bawah minimum", () => {
     const r = kiraDagangan({

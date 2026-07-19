@@ -43,6 +43,8 @@ export function kiraDagangan(input) {
   const rr = Number(input.rr) || 2;
   // TP2 pada nisbah lebih tinggi (lalai 3, atau rr+1 jika rr sudah tinggi).
   const rr2 = Number(input.rr2) > rr ? Number(input.rr2) : Math.max(3, rr + 1);
+  // TP3 sasaran lanjutan (lalai 4, atau rr2+1 jika rr2 sudah tinggi).
+  const rr3 = Number(input.rr3) > rr2 ? Number(input.rr3) : Math.max(4, rr2 + 1);
   const baki = Number(input.baki);
   const risikoPct = Number(input.risikoPct);
   const kadarUsd = Number(input.kadarUsd) > 0 ? Number(input.kadarUsd) : 1;
@@ -55,14 +57,17 @@ export function kiraDagangan(input) {
   const jarakSL = atr * pengganda; // dalam unit harga
   const jarakTP1 = jarakSL * rr;
   const jarakTP2 = jarakSL * rr2;
+  const jarakTP3 = jarakSL * rr3;
   const arahNaik = arah === "Buy";
   const sl = arahNaik ? entry - jarakSL : entry + jarakSL;
   const tp1 = arahNaik ? entry + jarakTP1 : entry - jarakTP1;
   const tp2 = arahNaik ? entry + jarakTP2 : entry - jarakTP2;
+  const tp3 = arahNaik ? entry + jarakTP3 : entry - jarakTP3;
 
   const slPip = jarakSL / pair.pip;
   const tp1Pip = jarakTP1 / pair.pip;
   const tp2Pip = jarakTP2 / pair.pip;
+  const tp3Pip = jarakTP3 / pair.pip;
 
   let lot = null;
   let amaunRisiko = null;
@@ -92,10 +97,13 @@ export function kiraDagangan(input) {
     tp1Pip: tp1PipR,
     tp2: round(tp2, pair.digit),
     tp2Pip: round(tp2Pip, 1),
+    tp3: round(tp3, pair.digit),
+    tp3Pip: round(tp3Pip, 1),
     tp: tp1R,
     tpPip: tp1PipR,
     rr,
     rr2,
+    rr3,
     lot: lot != null ? round(lot, 2) : null,
     amaunRisiko: amaunRisiko != null ? round(amaunRisiko, 2) : null,
     amaran,
@@ -116,7 +124,9 @@ function simpanSetup(nama, nilai) {
 }
 
 // Bina UI borang kalkulator dalam `host`.
-export function renderKalkulator(host) {
+// `awal` (pilihan) = { pair, arah, entry, atr } dihantar dari Dashboard supaya
+// pelan dagangan yang sudah dikira di sana tidak perlu ditaip semula.
+export function renderKalkulator(host, awal = null) {
   const opsiPair = PAIRS.map((p) => `<option value="${p.id}">${p.id} — ${p.nama}</option>`).join(
     ""
   );
@@ -178,6 +188,14 @@ export function renderKalkulator(host) {
   const hasil = host.querySelector("#hasil-kira");
   const panelRisiko = host.querySelector("#panel-risiko");
   const muatEl = host.querySelector("#muat-setup");
+
+  // Pra-isi dari Dashboard (#calc?pair=…&arah=…&entry=…&atr=…).
+  if (awal) {
+    if (awal.pair && cariPair(awal.pair)) form.elements.pairId.value = cariPair(awal.pair).id;
+    if (awal.arah === "Buy" || awal.arah === "Sell") form.elements.arah.value = awal.arah;
+    if (Number(awal.entry) > 0) form.elements.entry.value = awal.entry;
+    if (Number(awal.atr) > 0) form.elements.atr.value = awal.atr;
+  }
 
   // ---- Tetapan kunci API (Twelve Data) ----
   const apiKeyEl = host.querySelector("#api-key");
@@ -334,6 +352,7 @@ export function renderKalkulator(host) {
           <tr><td>Stop Loss</td><td class="sl">${r.sl} <span class="pip">(${r.slPip} pip)</span></td></tr>
           <tr><td>Take Profit 1</td><td class="tp">${r.tp1} <span class="pip">(${r.tp1Pip} pip · R:R ${r.rr})</span></td></tr>
           <tr><td>Take Profit 2</td><td class="tp">${r.tp2} <span class="pip">(${r.tp2Pip} pip · R:R ${r.rr2})</span></td></tr>
+          <tr><td>Take Profit 3</td><td class="tp">${r.tp3} <span class="pip">(${r.tp3Pip} pip · R:R ${r.rr3})</span></td></tr>
           ${lotBaris}
         </table>
         ${amaranHtml}

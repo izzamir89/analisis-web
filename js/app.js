@@ -13,8 +13,9 @@ import {
 } from "./sessions.js";
 import { renderChecklist, hentiChecklist } from "./checklist.js";
 import { renderJurnal } from "./journal.js";
-import { bacaBerita, simpanBerita } from "./news.js";
+import { bacaAcara, simpanAcara, padamAcara, jarakAcara } from "./news.js";
 import { renderDashboard } from "./dashboard.js";
+import { escapeHtml } from "./store.js";
 
 const app = document.getElementById("app");
 const tajukEl = document.getElementById("tajuk");
@@ -187,10 +188,19 @@ function skrinCarta(pairId) {
         <b>📅 Berita impak tinggi</b>
         <button class="btn-kecil" id="berita-toggle">Tunjuk kalendar</button>
       </div>
-      <label class="nota">Masa berita merah seterusnya (waktu tempatan) — salin dari kalendar TV sekali, ia menyuap panel Go/No-Go di atas.
-        <input id="berita-masa" type="datetime-local">
-      </label>
-      <button class="btn-kecil" id="berita-padam">Padam masa berita</button>
+      <p class="nota">Salin acara dari kalendar TV. Acara <b>impak tinggi</b> dalam ±30 min akan menghalang dagangan (gate NO TRADE); impak sederhana hanya menurunkan markah.</p>
+      <ul class="berita-senarai" id="berita-senarai"></ul>
+      <div class="berita-tambah">
+        <input id="berita-nama" type="text" placeholder="Nama acara (cth. CPI)" aria-label="Nama acara">
+        <input id="berita-mw" type="text" maxlength="3" placeholder="USD" aria-label="Mata wang">
+        <select id="berita-impak" aria-label="Tahap impak">
+          <option value="tinggi">Impak tinggi</option>
+          <option value="sederhana">Impak sederhana</option>
+          <option value="rendah">Impak rendah</option>
+        </select>
+        <input id="berita-masa" type="datetime-local" aria-label="Masa acara">
+        <button class="btn-kecil" id="berita-tambah">+ Tambah acara</button>
+      </div>
       <div class="berita-kal" id="berita-kal" hidden></div>
     </div>
     <p class="nota">Tip: dalam carta, klik ikon loceng untuk set alert masa-nyata TradingView (perlu akaun TV percuma). Baca nilai ATR(14) di sini untuk kalkulator.</p>`;
@@ -218,15 +228,61 @@ function skrinCarta(pairId) {
   // Panel Go/No-Go — guna interval carta semasa untuk timing lilin.
   renderChecklist(app.querySelector("#gng"), { getInterval: () => interval });
 
-  // Panel berita: input masa berita merah + kalendar impak-tinggi boleh-lipat.
+  // Panel berita: senarai acara + kalendar impak-tinggi boleh-lipat.
+  const senaraiEl = app.querySelector("#berita-senarai");
   const masaEl = app.querySelector("#berita-masa");
-  const tersimpan = bacaBerita();
-  if (tersimpan) masaEl.value = keInputLokal(tersimpan);
-  masaEl.addEventListener("change", () => simpanBerita(masaEl.value));
-  app.querySelector("#berita-padam").addEventListener("click", () => {
-    simpanBerita(null);
+  const namaEl = app.querySelector("#berita-nama");
+  const mwEl = app.querySelector("#berita-mw");
+  const impakEl = app.querySelector("#berita-impak");
+
+  function lukisAcara() {
+    const { senarai } = jarakAcara(new Date());
+    if (!senarai.length) {
+      senaraiEl.innerHTML = `<li class="nota">Tiada acara direkod.</li>`;
+      return;
+    }
+    senaraiEl.innerHTML = senarai
+      .map(
+        (a) =>
+          `<li class="berita-item impak-${a.impak}${a.bahaya ? " berita-bahaya" : ""}">
+             <span class="berita-mw">${escapeHtml(a.mataWang || "—")}</span>
+             <span class="berita-nama">${escapeHtml(a.nama)}</span>
+             <span class="berita-kira">${a.lalu ? `${Math.abs(Math.round(a.minit))} min lalu` : `${Math.round(a.minit)} min lagi`}</span>
+             <button class="btn-kecil berita-buang" data-id="${escapeHtml(a.id)}" aria-label="Buang acara">✕</button>
+           </li>`
+      )
+      .join("");
+    senaraiEl.querySelectorAll(".berita-buang").forEach((b) =>
+      b.addEventListener("click", () => {
+        padamAcara(b.dataset.id);
+        lukisAcara();
+      })
+    );
+  }
+
+  app.querySelector("#berita-tambah").addEventListener("click", () => {
+    if (!masaEl.value) {
+      masaEl.focus();
+      return;
+    }
+    const d = new Date(masaEl.value);
+    if (isNaN(d.getTime())) return;
+    simpanAcara([
+      ...bacaAcara(),
+      {
+        id: `a-${d.getTime()}-${Math.round(d.getTime() % 9973)}`,
+        nama: namaEl.value.trim() || "Berita",
+        mataWang: mwEl.value.trim(),
+        impak: impakEl.value,
+        masa: d,
+      },
+    ]);
+    namaEl.value = "";
+    mwEl.value = "";
     masaEl.value = "";
+    lukisAcara();
   });
+  lukisAcara();
   const kalEl = app.querySelector("#berita-kal");
   const toggleEl = app.querySelector("#berita-toggle");
   toggleEl.addEventListener("click", () => {
@@ -238,12 +294,6 @@ function skrinCarta(pairId) {
       kalEl.dataset.dimuat = "1";
     }
   });
-}
-
-// Tukar Date → string "YYYY-MM-DDTHH:MM" waktu tempatan untuk input datetime-local.
-function keInputLokal(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function skrinScreener() {
@@ -286,10 +336,10 @@ function skrinDashboard(pairId) {
   renderDashboard(app.querySelector(".padded"), p.id);
 }
 
-function skrinKalkulator() {
+function skrinKalkulator(awal) {
   tajukEl.textContent = "Kalkulator Entry / SL / TP";
   app.innerHTML = `<div class="padded"></div>`;
-  renderKalkulator(app.querySelector(".padded"));
+  renderKalkulator(app.querySelector(".padded"), awal);
 }
 
 function skrinAlerts() {
@@ -308,7 +358,11 @@ function skrinJurnal() {
 
 function route() {
   const hash = location.hash || "#watchlist";
-  const [rute, arg] = hash.replace(/^#/, "").split("/");
+  // Pisahkan rentetan pertanyaan dahulu: Dashboard menyerahkan pelan dagangan
+  // melalui #calc?pair=…&arah=…&entry=…&atr=…
+  const [laluan, pertanyaan] = hash.replace(/^#/, "").split("?");
+  const [rute, arg] = laluan.split("/");
+  const params = Object.fromEntries(new URLSearchParams(pertanyaan || ""));
   window.scrollTo(0, 0);
   hentiJam(); // hentikan jam skrin sebelum (jika ada)
   hentiCountdown(); // hentikan countdown lilin skrin sebelum (jika ada)
@@ -331,7 +385,7 @@ function route() {
       setActiveNav("screener");
       break;
     case "calc":
-      skrinKalkulator();
+      skrinKalkulator(Object.keys(params).length ? params : null);
       setActiveNav("calc");
       break;
     case "alerts":

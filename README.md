@@ -27,16 +27,16 @@ Skrin **📊 Skor** (`#dashboard/EURUSD`) menggabungkan data pasaran sebenar jad
 
 ## Skrin
 
-| Tab               | Fungsi                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------ |
-| 📊 **Skor**       | Dashboard skor (enjin peraturan): AI Confidence (deterministik), Gred Kualiti Dagangan, trend MTF, kekuatan mata wang, RSI/MACD/ADX/ATR, SMC & backtest — perlu kunci API pilihan |
-| 📋 **Watchlist**  | Jam sesi pasaran berbilang zon, badge "status masuk order" (kecairan sesi), ticker harga, tolok teknikal setiap pasangan |
-| 🔎 **Screener**   | Senarai screener forex, heat map kekuatan mata wang, kadar silang, kalendar ekonomi                                      |
+| Tab               | Fungsi                                                                                                                                                                                         |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 📊 **Skor**       | Dashboard skor (enjin peraturan): AI Confidence (deterministik), Gred Kualiti Dagangan, trend MTF, kekuatan mata wang, RSI/MACD/ADX/ATR, SMC & backtest — perlu kunci API pilihan              |
+| 📋 **Watchlist**  | Jam sesi pasaran berbilang zon, badge "status masuk order" (kecairan sesi), ticker harga, tolok teknikal setiap pasangan                                                                       |
+| 🔎 **Screener**   | Senarai screener forex, heat map kekuatan mata wang, kadar silang, kalendar ekonomi                                                                                                            |
 | 🧮 **Kalkulator** | Kira SL/TP dari ATR, saiz lot dari risiko %, amaran R:R < 1.5, **Pengurus Risiko** (had kerugian harian + pendedahan berkorelasi), **akaun bukan-USD**, **setup tersimpan** → simpan ke Jurnal |
-| 🔔 **Alert**      | Alert harga ringkas (lihat had di bawah)                                                                                 |
-| 📒 **Jurnal**     | **Analisis prestasi** (expectancy, profit factor, streak, keluk ekuiti, kadar menang ikut sesi/pasangan/arah), medan "R sebenar", eksport/import JSON |
-| **Carta**         | Carta lilin penuh + RSI/MACD/Bollinger, countdown tutup lilin, panel **Go/No-Go** (item boleh-ubah), input masa berita merah |
-| **MTF**           | Penjajaran multi-timeframe — tolok teknikal 1J/4J/Harian bersebelahan untuk konfluens trend (dari kad Watchlist)          |
+| 🔔 **Alert**      | Alert harga ringkas (lihat had di bawah)                                                                                                                                                       |
+| 📒 **Jurnal**     | **Analisis prestasi** (expectancy, profit factor, streak, keluk ekuiti, kadar menang ikut sesi/pasangan/arah), medan "R sebenar", eksport/import JSON                                          |
+| **Carta**         | Carta lilin penuh + RSI/MACD/Bollinger, countdown tutup lilin, panel **Go/No-Go** (item boleh-ubah), input masa berita merah                                                                   |
+| **MTF**           | Penjajaran multi-timeframe — tolok teknikal 1J/4J/Harian bersebelahan untuk konfluens trend (dari kad Watchlist)                                                                               |
 
 ### Metrik jurnal (edge-finder)
 
@@ -81,8 +81,8 @@ js/
   widgets.js    Pembina widget TradingView (embed rasmi)
   pairs.js      Senarai pasangan forex → simbol TradingView + Twelve Data (medan td)
   sessions.js   Sesi pasaran, status kecairan, timing tutup lilin, pasaran-tutup
-  calculator.js SL/TP + TP2 + auto-ATR + saiz lot + panel risiko + setup + akaun bukan-USD
-  news.js       Jarak ke berita impak tinggi
+  calculator.js SL/TP1-3 + auto-ATR + saiz lot + panel risiko + setup + akaun bukan-USD
+  news.js       Senarai acara berita manual + jarak masa (adapter untuk API kelak)
   checklist.js  Panel Go/No-Go (sesi + timing + berita + R:R, item boleh-ubah)
   journal.js    Jurnal dagangan (localStorage) + eksport/import + analisis prestasi
   analytics.js  Metrik edge-finder (tulen): expectancy, PF, kumpulan, ekuiti, streak
@@ -92,17 +92,43 @@ js/
   marketdata.js Lapisan data OHLC (Twelve Data): cache, kuota, fallback manual
   indicators.js EMA/RSI/MACD/ADX/ATR + kekuatan mata wang (tulen)
   smc.js        Smart Money Concepts — BOS/CHoCH/OB/liquidity (heuristik tulen)
-  scoring.js    Enjin peraturan berwajaran → skor/gred/verdict + penerangan (tulen)
+  aras.js       Paras sokongan/rintangan + zon supply/demand + kedudukan (tulen)
+  patterns.js   Corak lilin: engulfing/hammer/star, ambang berskala ATR (tulen)
+  tekanan.js    "Tekanan Pasaran" — proxy penyertaan dari julat & badan lilin (tulen)
+  mtf.js        Siri 4J/Harian "seperti dilihat pada masa T" — tanpa lookahead (tulen)
+  kebarangkalian.js  Jalur skor + kadar menang + selang Wilson dari backtest (tulen)
+  scoring.js    AI Score v3: enjin peraturan 100 mata + gate MTF/berita (tulen)
   backtest.js   Main semula enjin skor atas lilin sejarah → entri jurnal (tulen)
-  dashboard.js  Skrin Skor: gabung data + indikator + SMC + skor + backtest
-test/           Ujian Vitest (sessions, calculator, news, analytics, risk,
-                indicators, marketdata, scoring, smc, backtest)
+  dashboard.js  Skrin Skor: keputusan + pelan dagangan + sebab + backtest
+test/           Ujian Vitest (199 ujian merentas semua modul tulen di atas)
 ```
+
+### AI Score v3 — 100 mata
+
+| Baldi       | Mata | Kandungan                                      |
+| ----------- | ---- | ---------------------------------------------- |
+| Trend (MTF) | 40   | Harian 20 · 4J 10 · 1J 10                      |
+| Momentum    | 20   | RSI 5 · MACD 5 · ADX 5 · Tekanan Pasaran 5     |
+| Smart Money | 20   | Bias struktur 8 · kedudukan vs paras 7 · zon 5 |
+| Corak Lilin | 10   | Corak 6 · bonus konfluens dengan paras 4       |
+| Berita      | 10   | Tiada acara impak tinggi berhampiran           |
+
+**Gate `NO TRADE`** (skor menjadi tidak relevan): timeframe bertentangan arah · data
+timeframe tidak lengkap · berita impak tinggi dalam zon bahaya · pasaran tutup ·
+volatiliti melonjak (ATR > 1.2% harga). Timeframe _neutral_ hanya mengurangkan
+markah — ia tidak menggate.
+
+**Gate lembut `WAIT`**: harga dalam 0.5×ATR dari paras bertentangan → "tunggu breakout".
+
+Data hilang memberi **0 markah**, bukan separuh kredit — skor yang dibina atas
+ketidaktahuan tidak boleh dipercayai.
 
 ## Had yang perlu diketahui (jujur)
 
 - **Alert harga** guna [frankfurter.dev](https://frankfurter.dev) (kadar **harian** ECB): hanya berjalan semasa app dibuka, **bukan intraday**, dan **tiada emas (XAUUSD)**. Untuk alert masa-nyata sebenar, guna ikon loceng dalam carta TradingView (perlu akaun TV percuma).
-- **Kalendar berita** ialah iframe paparan — tak boleh dibaca secara programatik. Anda **salin sekali** masa berita merah seterusnya ke panel berita; app kira jarak masa secara tempatan untuk menyuap Go/No-Go.
+- **Kalendar berita** ialah iframe paparan — tak boleh dibaca secara programatik. Anda **salin acara** dari kalendar TV ke panel berita (nama, mata wang, impak, masa); app kira jarak masa secara tempatan untuk menyuap gate skor dan Go/No-Go. `bacaAcara()` dalam [`js/news.js`](js/news.js) ialah satu-satunya sempadan data — pemasangan API kalendar kelak hanya menggantikan fungsi itu.
+- **Kebarangkalian berjaya** datang dari **backtest sebenar** yang dijalurkan ikut skor, bukan lengkung yang dipetakan dari skor. Di bawah 30 sampel ia berkata **"data tidak mencukupi"** dan bukan memberi nombor. Angka ini kekal **in-sample**: pemberat direka manusia lalu diuji pada data yang sama, jadi ia optimistik secara sistematik — baca sebagai prestasi sejarah, bukan ramalan.
+- **"Tekanan Pasaran" bukan volume.** Forex spot tiada volume berpusat dan Twelve Data memulangkan 0/null untuknya. Metrik ini dikira dari pengembangan julat lilin berbanding ATR dan nisbah badan/sumbu — proxy penyertaan, bukan volume sebenar.
 - **Timing tutup lilin harian** dianggap **21:00 UTC** (≈17:00 New York, waktu piawai). Broker berbeza mungkin ada offset sedikit berbeza.
 - Status "masuk order" berdasarkan **kecairan sesi**, bukan isyarat arah Buy/Sell.
 
