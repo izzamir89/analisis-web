@@ -29,14 +29,21 @@ const BINTANG = { "A+": "⭐⭐⭐⭐⭐", A: "⭐⭐⭐⭐", B: "⭐⭐⭐", C:
 const SPINNER = '<span class="spinner" aria-hidden="true"></span>';
 const IKON_STATUS = { ok: "✅", amaran: "⚠️", gagal: "❌" };
 
-// Twelve Data mengenakan kos kredit yang SAMA tanpa mengira outputsize, jadi kita
-// ambil sejarah yang mencukupi untuk backtest bermakna.
-// 4J & Harian mesti meliputi julat masa 1J DITAMBAH ~260 lilin pemanasan EMA200,
-// jika tidak bar backtest awal akan kehilangan data TF-tinggi dan digate keluar.
-//   1J 5000  ≈ 208 hari
-//   4J 2000  ≈ 333 hari  ✅ meliputi julat 1J + pemanasan
-//   D  1000  ≈ 1000 hari ✅
-const SAIZ = { 60: 5000, 240: 2000, D: 1000 };
+// Saiz muatan setiap timeframe — tetapan konservatif.
+//
+// KEKANGAN YANG TIDAK BOLEH DILANGGAR: 4J & Harian mesti meliputi julat masa 1J
+// DITAMBAH ~260 lilin pemanasan EMA200. Jika tidak, bar backtest awal kehilangan
+// data TF-tinggi, gate "data tidak lengkap" menyala pada setiap bar, dan backtest
+// menghasilkan SIFAR dagangan (pepijat sebenar yang pernah berlaku — lihat mtf.js).
+//
+//   1J 1500 ≈ 62 hari
+//   4J  750 ≈ 125 hari  — perlu 62 + 33 (260 lilin) = 95 hari  ✅
+//   D   400 ≈ 400 hari  — perlu 62 + 260           = 322 hari  ✅
+//
+// Untuk sampel backtest lebih besar (jalur kebarangkalian matang lebih cepat),
+// naikkan berkadar: 1J 5000 / 4J 2000 / D 1000 masih memenuhi kekangan di atas.
+// Semak baris kuota selepas "Muat data" sebelum menaikkannya.
+const SAIZ = { 60: 1500, 240: 750, D: 400 };
 
 // % perubahan harian dari lilin (tutup terakhir vs sebelum).
 function perubahanHarian(candles) {
