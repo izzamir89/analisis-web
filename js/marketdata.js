@@ -21,10 +21,11 @@ const HAD_SEMINIT = 7;
 const HAD_HARIAN = 800;
 
 // TTL cache ikut interval (ms) — lilin cuma basi bila bar baharu tutup.
-const TTL = { 60: 10 * 60_000, 240: 30 * 60_000, D: 6 * 3_600_000 };
+// M5/M15 (mod scalp) guna TTL pendek: lilin tutup lebih kerap.
+const TTL = { 5: 60_000, 15: 5 * 60_000, 60: 10 * 60_000, 240: 30 * 60_000, D: 6 * 3_600_000 };
 
-// Peta interval dalaman ("60"/"240"/"D") → simbol interval Twelve Data.
-const INTERVAL_TD = { 60: "1h", 240: "4h", D: "1day" };
+// Peta interval dalaman ("5"/"15"/"60"/"240"/"D") → simbol interval Twelve Data.
+const INTERVAL_TD = { 5: "5min", 15: "15min", 60: "1h", 240: "4h", D: "1day" };
 
 // ---- Tetapan API (localStorage) ----
 

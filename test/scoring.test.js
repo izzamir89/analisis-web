@@ -298,3 +298,48 @@ describe("jelaskan", () => {
     expect(teks).toContain("tidak relevan");
   });
 });
+
+// Mod dagangan (scalp) menyalurkan label/berat/ambang TF sendiri. Default (tiada param)
+// mesti kekal SAMA seperti swing 1J/4J/Harian — semua ujian di atas ialah bukti regresi.
+describe("parametrize mod — tfLabel / bobotTrend / gate", () => {
+  it("tfLabel diguna dalam sebab trend (mis. label scalp M5/M15/H1)", () => {
+    const r = skorSetup({ ...asasBuy, tfLabel: { hi: "H1", mid: "M15", lo: "M5" } });
+    const sebabTrend = r.firedRules.find((x) => x.id === "trend").sebab;
+    expect(sebabTrend).toContain("H1");
+    expect(sebabTrend).toContain("M15");
+    expect(sebabTrend).toContain("M5");
+    // Tanpa param → label lalai (regresi).
+    expect(skorSetup(asasBuy).firedRules.find((x) => x.id === "trend").sebab).toContain("Harian");
+  });
+
+  it("bobotTrend menukar taburan markah trend (jumlah kekal 40)", () => {
+    // Satu TF (mid) neutral supaya berat mempengaruhi markah.
+    const asas = { ...asasBuy, ind4h: neutral };
+    const lalai = skorSetup(asas).pecahan.trend; // 20 + 4 + 10 = 34
+    const beratLain = skorSetup({ ...asas, bobotTrend: { hi: 10, mid: 10, lo: 20 } }).pecahan.trend;
+    expect(lalai).toBe(34);
+    expect(beratLain).toBe(34); // 10 + 4 + 20 = 34 (mid neutral 10×0.4)
+    // Beri berat besar pada TF neutral → markah turun.
+    const beratKeMid = skorSetup({ ...asas, bobotTrend: { hi: 10, mid: 25, lo: 5 } }).pecahan.trend;
+    expect(beratKeMid).toBe(25); // 10 + (25×0.4=10) + 5
+  });
+
+  it("atrMelonjak lebih rendah (scalp) menggate ATR yang swing benarkan", () => {
+    const indSederhana = { ...bull, atr: 0.0066 }; // ≈0.6% dari harga 1.1
+    // Swing (ambang 0.012) → lulus.
+    expect(skorSetup({ ...asasBuy, ind1h: indSederhana }).gate.lulus).toBe(true);
+    // Scalp (ambang 0.004) → NO TRADE.
+    const r = skorSetup({ ...asasBuy, ind1h: indSederhana, atrMelonjak: 0.004 });
+    expect(r.gate.lulus).toBe(false);
+    expect(r.gate.sebab.join(" ")).toContain("Volatiliti melonjak");
+  });
+
+  it("ambangMasuk lebih tinggi menurunkan verdict BUY → WAIT pada skor sama", () => {
+    const skor = skorSetup(asasBuy).skor; // kira skor sebenar dahulu
+    const r = skorSetup({ ...asasBuy, ambangMasuk: skor + 1 }); // ambang melebihi skor
+    expect(r.gate.lulus).toBe(true);
+    expect(r.verdict).toBe("WAIT");
+    // Ambang tepat pada skor → masih cukup untuk BUY.
+    expect(skorSetup({ ...asasBuy, ambangMasuk: skor }).verdict).toBe("BUY");
+  });
+});

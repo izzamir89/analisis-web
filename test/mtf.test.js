@@ -4,12 +4,23 @@ import {
   mulaHariUTC,
   mulaTempoh,
   siriPadaMasa,
+  tempohDariInterval,
   TEMPOH_4J,
   TEMPOH_HARI,
   JAM,
 } from "../js/mtf.js";
 
 const c = (t, o, h, l, cl) => ({ t, o, h, l, c: cl });
+
+describe("tempohDariInterval", () => {
+  it("minit → ms, D → sehari", () => {
+    expect(tempohDariInterval("5")).toBe(5 * 60000);
+    expect(tempohDariInterval("15")).toBe(15 * 60000);
+    expect(tempohDariInterval("60")).toBe(TEMPOH_4J / 4); // 1 jam
+    expect(tempohDariInterval("240")).toBe(TEMPOH_4J);
+    expect(tempohDariInterval("D")).toBe(TEMPOH_HARI);
+  });
+});
 
 describe("gabungLilin", () => {
   it("o pertama, c terakhir, h max, l min, t pertama", () => {

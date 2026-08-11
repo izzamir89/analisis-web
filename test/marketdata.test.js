@@ -27,6 +27,10 @@ describe("simbolProvider & petaInterval", () => {
     expect(petaInterval("D")).toBe("1day");
     expect(petaInterval("xx")).toBe("1h"); // fallback
   });
+  it("peta interval scalp M5/M15 ke simbol Twelve Data", () => {
+    expect(petaInterval("5")).toBe("5min");
+    expect(petaInterval("15")).toBe("15min");
+  });
 });
 
 describe("normalTwelveData", () => {

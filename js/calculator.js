@@ -189,12 +189,16 @@ export function renderKalkulator(host, awal = null) {
   const panelRisiko = host.querySelector("#panel-risiko");
   const muatEl = host.querySelector("#muat-setup");
 
-  // Pra-isi dari Dashboard (#calc?pair=…&arah=…&entry=…&atr=…).
+  // Pra-isi dari Dashboard/Scalp (#calc?pair=…&arah=…&entry=…&atr=…&pengganda=…&rr=…).
+  // Mod scalp menghantar pengganda/rr lebih ketat (SL/TP rapat) supaya kalkulator
+  // bermula dengan parameter gaya yang betul.
   if (awal) {
     if (awal.pair && cariPair(awal.pair)) form.elements.pairId.value = cariPair(awal.pair).id;
     if (awal.arah === "Buy" || awal.arah === "Sell") form.elements.arah.value = awal.arah;
     if (Number(awal.entry) > 0) form.elements.entry.value = awal.entry;
     if (Number(awal.atr) > 0) form.elements.atr.value = awal.atr;
+    if (Number(awal.pengganda) > 0) form.elements.pengganda.value = awal.pengganda;
+    if (Number(awal.rr) > 0) form.elements.rr.value = awal.rr;
   }
 
   // ---- Tetapan kunci API (Twelve Data) ----

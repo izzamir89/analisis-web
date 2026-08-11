@@ -24,6 +24,13 @@ export const JAM = 3600000;
 export const TEMPOH_4J = 4 * JAM;
 export const TEMPOH_HARI = 24 * JAM;
 
+// Tempoh (ms) satu lilin dari interval dalaman marketdata ("5"/"15"/"60"/"240"/"D").
+// Digunakan backtest untuk membina siri TF-tinggi dari TF-entry mengikut mod.
+export function tempohDariInterval(interval) {
+  if (interval === "D") return TEMPOH_HARI;
+  return Number(interval) * 60000; // minit → ms (60=1J → 3.6e6, 240=4J → 1.44e7)
+}
+
 // Berapa lilin TF-tinggi lengkap untuk disimpan. EMA200 perlu 200; lebihan
 // memberi ruang penumpuan tanpa menjadikan setiap bar mahal.
 const SIMPAN = 260;

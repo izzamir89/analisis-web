@@ -35,6 +35,11 @@ export const ATR_MELONJAK = 0.012; // atr/harga di atas ini = terlalu volatil un
 
 const MAKS = { trend: 40, momentum: 20, smartMoney: 20, lilin: 10, berita: 10 };
 
+// Berat & label triad TF lalai (mod swing 1J/4J/Harian). Mod lain (scalp) menghantar
+// nilai sendiri melalui input.bobotTrend / input.tfLabel — lihat js/mod.js.
+const BOBOT_TREND_LALAI = { hi: 20, mid: 10, lo: 10 }; // jumlah = MAKS.trend
+const LABEL_TF_LALAI = { hi: "Harian", mid: "4J", lo: "1J" };
+
 function jepit(x, min, max) {
   return Math.max(min, Math.min(max, x));
 }
@@ -76,15 +81,15 @@ export function arahDominan(input) {
 
 // --- Baldi skor ---
 
-// Trend (40): Harian 20 · 4J 10 · 1J 10.
-// TF bertentangan → konflik (gate NO TRADE). TF hilang → tiadaData (gate NO TRADE).
-// TF neutral → 40% markah, gate masih lulus.
-function skorTrend(indD, ind4h, ind1h, arah) {
+// Trend (40): berat lalai Harian 20 · 4J 10 · 1J 10 (boleh diganti ikut mod).
+// Slot hi/mid/lo generik: indD=hi, ind4h=mid, ind1h=lo. TF bertentangan → konflik
+// (gate NO TRADE). TF hilang → tiadaData (gate NO TRADE). TF neutral → 40% markah.
+function skorTrend(indD, ind4h, ind1h, arah, bobot = BOBOT_TREND_LALAI, label = LABEL_TF_LALAI) {
   const mahu = arah === "Buy" ? "bull" : "bear";
   const tf = [
-    ["Harian", indD, 20],
-    ["4J", ind4h, 10],
-    ["1J", ind1h, 10],
+    [label.hi, indD, bobot.hi],
+    [label.mid, ind4h, bobot.mid],
+    [label.lo, ind1h, bobot.lo],
   ];
   let markah = 0;
   let konflik = false;
@@ -311,8 +316,11 @@ export function skorSetup(input) {
   const harga = input.ind1h ? input.ind1h.harga : null;
   const atrNilai = input.ind1h ? input.ind1h.atr : null;
 
+  const ambangMasuk = input.ambangMasuk ?? AMBANG_MASUK;
+  const atrMelonjak = input.atrMelonjak ?? ATR_MELONJAK;
+
   const baldi = {
-    trend: skorTrend(input.indD, input.ind4h, input.ind1h, arah),
+    trend: skorTrend(input.indD, input.ind4h, input.ind1h, arah, input.bobotTrend, input.tfLabel),
     momentum: skorMomentum(input.ind1h, input.candles1h, arah),
     smartMoney: skorSmartMoney(input.smc, input.aras, input.zon, harga, atrNilai, arah),
     lilin: skorLilin(input.candles1h, input.aras, atrNilai, harga, arah, input.zon),
@@ -330,7 +338,7 @@ export function skorSetup(input) {
     sebabGate.push("Data timeframe tidak lengkap — tidak boleh sahkan penjajaran.");
   if (baldi.berita.bahaya) sebabGate.push("Berita impak tinggi dalam zon bahaya.");
   const atrPct = harga > 0 && atrNilai > 0 ? atrNilai / harga : null;
-  if (atrPct != null && atrPct > ATR_MELONJAK) {
+  if (atrPct != null && atrPct > atrMelonjak) {
     sebabGate.push(`Volatiliti melonjak (ATR ${(atrPct * 100).toFixed(2)}%) — terlalu berisiko.`);
   }
 
@@ -357,7 +365,7 @@ export function skorSetup(input) {
   let verdict;
   if (!gate.lulus) verdict = "NO TRADE";
   else if (baldi.smartMoney.tungguBreakout) verdict = "WAIT";
-  else if (skor >= AMBANG_MASUK) verdict = arah === "Buy" ? "BUY" : "SELL";
+  else if (skor >= ambangMasuk) verdict = arah === "Buy" ? "BUY" : "SELL";
   else verdict = "WAIT";
 
   const firedRules = Object.entries(baldi).map(([id, b]) => {

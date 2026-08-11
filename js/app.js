@@ -20,8 +20,10 @@ import { escapeHtml } from "./store.js";
 const app = document.getElementById("app");
 const tajukEl = document.getElementById("tajuk");
 
-// Tetapan timeframe untuk skrin Carta
+// Tetapan timeframe untuk skrin Carta (v = kod interval carta lanjutan TradingView)
 const TF = [
+  { label: "M5", v: "5" },
+  { label: "M15", v: "15" },
   { label: "1J", v: "60" },
   { label: "4J", v: "240" },
   { label: "Harian", v: "D" },
@@ -136,6 +138,8 @@ function skrinWatchlist() {
 // Skrin Multi-Timeframe — tolok teknikal 1J / 4J / Harian bersebelahan untuk lihat
 // konfluens trend sepintas lalu. Tolok visual sahaja (widget iframe tak boleh dibaca).
 const MTF_TF = [
+  { label: "M5", v: "5m" },
+  { label: "M15", v: "15m" },
   { label: "1 Jam", v: "1h" },
   { label: "4 Jam", v: "4h" },
   { label: "Harian", v: "1D" },
@@ -336,6 +340,21 @@ function skrinDashboard(pairId) {
   renderDashboard(app.querySelector(".padded"), p.id);
 }
 
+// Skrin Scalping — enjin skor SAMA, tetapi mod "scalp" (M5/M15/H1) melalui
+// renderDashboard yang diparametrikan. Pasangan terakhir diingat berasingan (sc_pair).
+function skrinScalp(pairId) {
+  let last = null;
+  try {
+    last = localStorage.getItem("sc_pair");
+  } catch {
+    /* abai */
+  }
+  const p = cariPair(pairId || last || "EURUSD");
+  tajukEl.textContent = `Scalping ${p.id} (M5/M15/H1)`;
+  app.innerHTML = `<div class="padded"></div>`;
+  renderDashboard(app.querySelector(".padded"), p.id, "scalp");
+}
+
 function skrinKalkulator(awal) {
   tajukEl.textContent = "Kalkulator Entry / SL / TP";
   app.innerHTML = `<div class="padded"></div>`;
@@ -371,6 +390,10 @@ function route() {
     case "dashboard":
       skrinDashboard(arg);
       setActiveNav("dashboard");
+      break;
+    case "scalp":
+      skrinScalp(arg);
+      setActiveNav("scalp");
       break;
     case "chart":
       skrinCarta(arg);

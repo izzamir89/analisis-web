@@ -30,6 +30,7 @@ Skrin **📊 Skor** (`#dashboard/EURUSD`) menggabungkan data pasaran sebenar jad
 | Tab               | Fungsi                                                                                                                                                                                         |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 📊 **Skor**       | Dashboard skor (enjin peraturan): AI Confidence (deterministik), Gred Kualiti Dagangan, trend MTF, kekuatan mata wang, RSI/MACD/ADX/ATR, SMC & backtest — perlu kunci API pilihan              |
+| ⚡ **Scalp**      | Skrin **Scalping** — enjin skor yang SAMA tetapi mod pantas **M5/M15/H1** (SL/TP lebih ketat, gate ATR ditala). Analisis atas-permintaan; spread/komisen tidak dimodelkan — lihat had di bawah |
 | 📋 **Watchlist**  | Jam sesi pasaran berbilang zon, badge "status masuk order" (kecairan sesi), ticker harga, tolok teknikal setiap pasangan                                                                       |
 | 🔎 **Screener**   | Senarai screener forex, heat map kekuatan mata wang, kadar silang, kalendar ekonomi                                                                                                            |
 | 🧮 **Kalkulator** | Kira SL/TP dari ATR, saiz lot dari risiko %, amaran R:R < 1.5, **Pengurus Risiko** (had kerugian harian + pendedahan berkorelasi), **akaun bukan-USD**, **setup tersimpan** → simpan ke Jurnal |
@@ -67,7 +68,7 @@ npm run lint       # ESLint + semak format Prettier
 npm run format     # betulkan format automatik
 ```
 
-Ujian meliputi fungsi tulen berisiko-senyap: logik sesi/timing ([`js/sessions.js`](js/sessions.js)), kalkulator dagangan ([`js/calculator.js`](js/calculator.js)), jarak berita ([`js/news.js`](js/news.js)), indikator ([`js/indicators.js`](js/indicators.js)), enjin skor ([`js/scoring.js`](js/scoring.js)), SMC ([`js/smc.js`](js/smc.js)), backtest ([`js/backtest.js`](js/backtest.js)) & lapisan data ([`js/marketdata.js`](js/marketdata.js)).
+Ujian meliputi fungsi tulen berisiko-senyap: logik sesi/timing ([`js/sessions.js`](js/sessions.js)), kalkulator dagangan ([`js/calculator.js`](js/calculator.js)), jarak berita ([`js/news.js`](js/news.js)), indikator ([`js/indicators.js`](js/indicators.js)), enjin skor ([`js/scoring.js`](js/scoring.js)), preset mod ([`js/mod.js`](js/mod.js)), SMC ([`js/smc.js`](js/smc.js)), backtest ([`js/backtest.js`](js/backtest.js)) & lapisan data ([`js/marketdata.js`](js/marketdata.js)).
 
 ## Struktur
 
@@ -99,8 +100,9 @@ js/
   kebarangkalian.js  Jalur skor + kadar menang + selang Wilson dari backtest (tulen)
   scoring.js    AI Score v3: enjin peraturan 100 mata + gate MTF/berita (tulen)
   backtest.js   Main semula enjin skor atas lilin sejarah → entri jurnal (tulen)
-  dashboard.js  Skrin Skor: keputusan + pelan dagangan + sebab + backtest
-test/           Ujian Vitest (199 ujian merentas semua modul tulen di atas)
+  mod.js        Preset "mod dagangan" — triad TF + tetapan skor/kalkulator (swing/scalp)
+  dashboard.js  Skrin Skor & Scalp: keputusan + pelan dagangan + sebab + backtest (diparametrikan mod)
+test/           Ujian Vitest (214 ujian merentas semua modul tulen di atas)
 ```
 
 ### AI Score v3 — 100 mata
@@ -122,6 +124,28 @@ markah — ia tidak menggate.
 
 Data hilang memberi **0 markah**, bukan separuh kredit — skor yang dibina atas
 ketidaktahuan tidak boleh dipercayai.
+
+### Mod dagangan (swing vs scalp)
+
+Enjin skor **satu**, diparametrikan oleh preset dalam [`js/mod.js`](js/mod.js). Setiap mod
+menetapkan triad timeframe (lo=entry · mid · hi=konteks), berat trend, saiz muatan, ambang
+skor, gate ATR, dan default SL/RR kalkulator:
+
+| Mod          | Triad TF   | SL (×ATR) | R:R | Gate ATR |
+| ------------ | ---------- | --------- | --- | -------- |
+| 📊 **Swing** | 1J/4J/Harian | 1.5     | 2   | 1.2%     |
+| ⚡ **Scalp** | M5/M15/H1  | 1.0       | 1.5 | 0.4%\*   |
+
+\* Gate ATR scalp (`atrMelonjak`) ialah **nilai awal** — perlu dikalibrasi guna keputusan
+backtest sebenar. Tab **Skor** = swing (default); tab **Scalp** = mod scalping. Enjin,
+gate MTF, backtest & rekonstruksi TF (dari [`js/mtf.js`](js/mtf.js)) adalah sama untuk
+kedua-dua mod.
+
+> ⚠️ **Scalping bukan isyarat masa-nyata.** Tier percuma Twelve Data (7 req/min, 800/hari)
+> tak boleh live-refresh lilin M5; ini kekal **analisis atas-permintaan**. **Spread/komisen
+> tidak dimodelkan** — pada scalp ia menguasai P&L, jadi kadar-menang backtest optimistik &
+> in-sample. Guna sebagai sokongan keputusan, bukan bot execution. Tempoh indikator
+> (EMA200/ATR14) diguna semula apa adanya, tidak dioptimum semula untuk M5.
 
 ## Had yang perlu diketahui (jujur)
 

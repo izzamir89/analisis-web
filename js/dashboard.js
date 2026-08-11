@@ -12,7 +12,8 @@ import { arasSR, zonSupplyDemand } from "./aras.js";
 import { skorSetup, jelaskan } from "./scoring.js";
 import { backtestAsync } from "./backtest.js";
 import { kumpulJalur, simpanSnapshot, bacaJalur } from "./kebarangkalian.js";
-import { siriPadaMasa, TEMPOH_4J, TEMPOH_HARI } from "./mtf.js";
+import { siriPadaMasa, tempohDariInterval } from "./mtf.js";
+import { ambilMod } from "./mod.js";
 import { kiraDagangan } from "./calculator.js";
 import { ringkasan } from "./analytics.js";
 import { statusMasaOrder, pasaranTutup } from "./sessions.js";
@@ -43,7 +44,9 @@ const IKON_STATUS = { ok: "✅", amaran: "⚠️", gagal: "❌" };
 // Untuk sampel backtest lebih besar (jalur kebarangkalian matang lebih cepat),
 // naikkan berkadar: 1J 5000 / 4J 2000 / D 1000 masih memenuhi kekangan di atas.
 // Semak baris kuota selepas "Muat data" sebelum menaikkannya.
-const SAIZ = { 60: 1500, 240: 750, D: 400 };
+//
+// Saiz muatan kini per-mod dalam js/mod.js (mod.saiz.lo/mid/hi) supaya mod scalp
+// (M5/M15/H1) boleh guna nilai sendiri yang memenuhi kekangan liputan yang sama.
 
 // % perubahan harian dari lilin (tutup terakhir vs sebelum).
 function perubahanHarian(candles) {
@@ -67,10 +70,17 @@ function num(x, d = 5) {
   return x == null ? "—" : Number(x).toFixed(d);
 }
 
-export function renderDashboard(host, pairId) {
+// Bilangan lilin sehari untuk satu interval dalaman — untuk anggaran "≈ N hari".
+function lilinSehari(interval) {
+  if (interval === "D") return 1;
+  return 1440 / Number(interval); // 1440 minit/hari ÷ minit selilin (60→24, 5→288)
+}
+
+export function renderDashboard(host, pairId, modId = "swing") {
+  const mod = ambilMod(modId);
   const p = cariPair(pairId);
   try {
-    localStorage.setItem("db_pair", p.id); // ingat pasangan terakhir dilihat
+    localStorage.setItem(mod.ingatKunci, p.id); // ingat pasangan terakhir dilihat (per-mod)
   } catch {
     /* abai */
   }
@@ -83,6 +93,11 @@ export function renderDashboard(host, pairId) {
       <button class="btn-utama btn-muat" id="muat-data">⤓ Muat data</button>
     </div>
     <p class="nota">Skor deterministik (enjin peraturan, <b>bukan AI/ML</b>) dari data pasaran sebenar. "Muat data" ambil ~3 kredit; kekuatan mata wang butang berasingan. Nilai mungkin beza sedikit dari broker.</p>
+    ${
+      mod.id === "scalp"
+        ? `<p class="nota db-nota-scalp">⚡ <b>Scalping (${mod.tfLabel.lo}/${mod.tfLabel.mid}/${mod.tfLabel.hi})</b> — analisis atas-permintaan (tier percuma tak boleh live-refresh); spread/komisen <b>tidak dimodelkan</b>; kadar-menang in-sample &amp; optimistik. Sokongan keputusan, bukan isyarat auto.</p>`
+        : ""
+    }
     <div id="db-kuota" class="db-kuota"></div>
     <div id="db-status" class="nota"></div>
     <div id="db-isi"></div>`;
@@ -107,7 +122,7 @@ export function renderDashboard(host, pairId) {
   };
 
   host.querySelector("#pilih-pair").addEventListener("change", (e) => {
-    location.hash = `#dashboard/${e.target.value}`;
+    location.hash = `#${mod.rute}/${e.target.value}`;
   });
   host.querySelector("#muat-data").addEventListener("click", muat);
 
@@ -125,12 +140,12 @@ export function renderDashboard(host, pairId) {
     }
     const btn = host.querySelector("#muat-data");
     btn.disabled = true;
-    statusEl.innerHTML = `${SPINNER} Mengambil OHLC (1J, 4J, Harian)…`;
+    statusEl.innerHTML = `${SPINNER} Mengambil OHLC (${mod.tfLabel.lo}, ${mod.tfLabel.mid}, ${mod.tfLabel.hi})…`;
 
     const [r1, r4, rd] = await Promise.all([
-      ambilOHLC(p.id, "60", { outputsize: SAIZ["60"] }),
-      ambilOHLC(p.id, "240", { outputsize: SAIZ["240"] }),
-      ambilOHLC(p.id, "D", { outputsize: SAIZ.D }),
+      ambilOHLC(p.id, mod.tf.lo, { outputsize: mod.saiz.lo }),
+      ambilOHLC(p.id, mod.tf.mid, { outputsize: mod.saiz.mid }),
+      ambilOHLC(p.id, mod.tf.hi, { outputsize: mod.saiz.hi }),
     ]);
     st.candles1h = r1.candles || null;
     st.candles4h = r4.candles || null;
@@ -155,11 +170,11 @@ export function renderDashboard(host, pairId) {
       statusEl.textContent = "";
       isiEl.innerHTML = `<div class="kotak db-kosong">
         <b>⚠️ Data tidak tersedia</b>
-        <p class="nota">${escapeHtml(r1.ralat || "Gagal ambil data 1J.")} Semak kunci API / kuota, atau cuba sebentar lagi. Emas & sesetengah pasangan mungkin liputan berbeza di tier percuma.</p>
+        <p class="nota">${escapeHtml(r1.ralat || `Gagal ambil data ${mod.tfLabel.lo}.`)} Semak kunci API / kuota, atau cuba sebentar lagi. Emas & sesetengah pasangan mungkin liputan berbeza di tier percuma.</p>
       </div>`;
       return;
     }
-    statusEl.textContent = `Sumber: ${r1.sumber} · ${st.candles1h.length} lilin 1J.`;
+    statusEl.textContent = `Sumber: ${r1.sumber} · ${st.candles1h.length} lilin ${mod.tfLabel.lo}.`;
     kiraDanLukis();
   }
 
@@ -171,9 +186,12 @@ export function renderDashboard(host, pairId) {
       btn.innerHTML = `${SPINNER} Mengira…`;
     }
     const perubahan = {};
+    // Kekuatan mata wang guna % perubahan HARIAN. Guna semula candles pasangan semasa
+    // hanya jika slot-hi mod ialah Harian (swing); dalam mod scalp st.candlesD memegang
+    // H1, jadi ambil "D" sebenar supaya % kekal harian, bukan setiap jam.
     for (const pr of PAIRS) {
       const rr =
-        pr.id === p.id && st.candlesD
+        pr.id === p.id && mod.tf.hi === "D" && st.candlesD
           ? { candles: st.candlesD }
           : await ambilOHLC(pr.id, "D", { outputsize: 30 });
       const ch = perubahanHarian(rr.candles);
@@ -199,6 +217,10 @@ export function renderDashboard(host, pairId) {
       smc: st.smc,
       aras: st.aras,
       zon: st.zon,
+      tfLabel: mod.tfLabel,
+      bobotTrend: mod.bobotTrend,
+      ambangMasuk: mod.ambangMasuk,
+      atrMelonjak: mod.atrMelonjak,
       statusSesi,
       berita,
       pasaranTutup: pasaranTutup(now),
@@ -249,6 +271,8 @@ export function renderDashboard(host, pairId) {
       arah: hasil.arah,
       entry: st.ind1h.harga,
       atr: st.ind1h.atr,
+      pengganda: mod.kalk.pengganda,
+      rr: mod.kalk.rr,
     });
     if (d.ralat) return "";
     const dgt = p.digit;
@@ -257,6 +281,8 @@ export function renderDashboard(host, pairId) {
       arah: hasil.arah,
       entry: String(st.ind1h.harga),
       atr: String(st.ind1h.atr),
+      pengganda: String(mod.kalk.pengganda),
+      rr: String(mod.kalk.rr),
     });
     const tentatif = hasil.verdict === "WAIT" ? ` <span class="db-tentatif">(tentatif — verdict WAIT)</span>` : ""; // prettier-ignore
     return `<div class="kotak db-pelan">
@@ -268,7 +294,7 @@ export function renderDashboard(host, pairId) {
           <div class="db-pelan-baris db-tp"><span>TP2 · 1:${d.rr2}</span><b>${d.tp2.toFixed(dgt)}</b><i>${d.tp2Pip} pip</i></div>
           <div class="db-pelan-baris db-tp"><span>TP3 · 1:${d.rr3}</span><b>${d.tp3.toFixed(dgt)}</b><i>${d.tp3Pip} pip</i></div>
         </div>
-        <p class="nota">SL = ATR(14) × 1.5. Saiz lot bergantung baki akaun & risiko % — tetapkan di Kalkulator.</p>
+        <p class="nota">SL = ATR(14) × ${mod.kalk.pengganda}. Saiz lot bergantung baki akaun & risiko % — tetapkan di Kalkulator.</p>
         <a class="btn-kecil" href="#calc?${params.toString()}">Buka di Kalkulator →</a>
       </div>`;
   }
@@ -298,9 +324,9 @@ export function renderDashboard(host, pairId) {
   function lukis(hasil, statusSesi, berita) {
     const { ind1h, ind4h, indD, smc, kekuatan, aras } = st;
     const tfRows = [
-      ["Harian", indD],
-      ["4 Jam", ind4h],
-      ["1 Jam", ind1h],
+      [mod.tfLabel.hi, indD],
+      [mod.tfLabel.mid, ind4h],
+      [mod.tfLabel.lo, ind1h],
     ]
       .map(([lbl, ind]) => {
         const t = labelTrend(ind);
@@ -361,7 +387,7 @@ export function renderDashboard(host, pairId) {
           <table class="hasil">${tfRows}</table>
         </div>
         <div class="kotak">
-          <h3>Momentum (1J)</h3>
+          <h3>Momentum (${mod.tfLabel.lo})</h3>
           <table class="hasil">
             <tr><td>RSI(14)</td><td class="${rsiKelas}">${ind1h && ind1h.rsi != null ? ind1h.rsi.toFixed(1) : "—"}</td></tr>
             <tr><td>MACD hist</td><td class="${macdKelas}">${ind1h ? num(ind1h.macdHist) : "—"}</td></tr>
@@ -380,7 +406,7 @@ export function renderDashboard(host, pairId) {
           <table class="hasil">${arasRows}</table>
         </div>
         <div class="kotak">
-          <h3>Corak Lilin (1J)</h3>
+          <h3>Corak Lilin (${mod.tfLabel.lo})</h3>
           <table class="hasil">
             <tr><td>Corak</td><td class="db-corak">${hasil.corak ? escapeHtml(hasil.corak.nama) : "—"}</td></tr>
             <tr><td>Arah</td><td class="${hasil.corak ? (hasil.corak.arah === "bull" ? "verdict-buy" : "verdict-sell") : ""}">${hasil.corak ? hasil.corak.arah : "—"}</td></tr>
@@ -400,8 +426,8 @@ export function renderDashboard(host, pairId) {
       </div>
 
       <div class="kotak" id="db-backtest">
-        <h3>Backtest (1J, enjin v3 penuh)</h3>
-        <p class="nota">Main semula enjin yang <b>sama</b> atas ${st.candles1h ? st.candles1h.length : 0} lilin 1J (≈ ${st.candles1h ? Math.round(st.candles1h.length / 24) : 0} hari), dengan 4J &amp; Harian dijana semula dari 1J. Keputusan mengisi jalur kebarangkalian di atas. <b>In-sample</b> — prestasi sejarah, bukan ramalan.</p>
+        <h3>Backtest (${mod.tfLabel.lo}, enjin v3 penuh)</h3>
+        <p class="nota">Main semula enjin yang <b>sama</b> atas ${st.candles1h ? st.candles1h.length : 0} lilin ${mod.tfLabel.lo} (≈ ${st.candles1h ? Math.round(st.candles1h.length / lilinSehari(mod.tf.lo)) : 0} hari), dengan ${mod.tfLabel.mid} &amp; ${mod.tfLabel.hi} dijana semula dari ${mod.tfLabel.lo}. Keputusan mengisi jalur kebarangkalian di atas. <b>In-sample</b> — prestasi sejarah, bukan ramalan.</p>
         <button class="btn-kecil" id="jalan-backtest">▶ Jalankan backtest</button>
         <div id="db-bt-hasil"></div>
       </div>`;
@@ -416,11 +442,11 @@ export function renderDashboard(host, pairId) {
     const out = isiEl.querySelector("#db-bt-hasil");
     const btn = isiEl.querySelector("#jalan-backtest");
     if (!st.candles1h || st.candles1h.length < 260) {
-      out.innerHTML = `<p class="nota">⚠️ Data 1J tak cukup untuk backtest (perlu ≥260 lilin untuk pemanasan EMA200).</p>`;
+      out.innerHTML = `<p class="nota">⚠️ Data ${mod.tfLabel.lo} tak cukup untuk backtest (perlu ≥260 lilin untuk pemanasan EMA200).</p>`;
       return;
     }
     if (!st.candles4h || !st.candlesD) {
-      out.innerHTML = `<p class="nota">⚠️ Data 4J / Harian tiada — backtest memerlukan ketiga-tiga timeframe untuk menguji gate MTF yang sama seperti dagangan langsung.</p>`;
+      out.innerHTML = `<p class="nota">⚠️ Data ${mod.tfLabel.mid} / ${mod.tfLabel.hi} tiada — backtest memerlukan ketiga-tiga timeframe untuk menguji gate MTF yang sama seperti dagangan langsung.</p>`;
       return;
     }
     btn.disabled = true;
@@ -428,15 +454,17 @@ export function renderDashboard(host, pairId) {
     const majuEl = out.querySelector("#bt-maju");
 
     // skorFn v3 PENUH — enjin yang SAMA seperti dagangan langsung, termasuk gate MTF.
-    // Siri 4J & Harian dibina oleh mtf.js: lilin lengkap sebenar sebelum tempoh
-    // semasa + lilin separa dibina dari 1J sehingga bar ini sahaja. Tiada lookahead.
-    // Berita sejarah tidak dapat diketahui → senarai kosong (bias konsisten
-    // merentas semua bar, jadi jalur kebarangkalian kekal boleh dibandingkan).
+    // Siri TF-tinggi (mid & hi mengikut mod) dibina oleh mtf.js: lilin lengkap sebenar
+    // sebelum tempoh semasa + lilin separa dibina dari TF-entry sehingga bar ini sahaja.
+    // Tiada lookahead. Berita sejarah tidak dapat diketahui → senarai kosong (bias
+    // konsisten merentas semua bar, jadi jalur kebarangkalian kekal boleh dibandingkan).
+    const tempohMid = tempohDariInterval(mod.tf.mid);
+    const tempohHi = tempohDariInterval(mod.tf.hi);
     const skorFn = (win) => {
       const ts = win[win.length - 1].t;
       const now = new Date(ts);
-      const s4 = siriPadaMasa(st.candles4h, win, ts, TEMPOH_4J);
-      const sD = siriPadaMasa(st.candlesD, win, ts, TEMPOH_HARI);
+      const s4 = siriPadaMasa(st.candles4h, win, ts, tempohMid);
+      const sD = siriPadaMasa(st.candlesD, win, ts, tempohHi);
       const atrSiri = kiraAtr(win, 14);
       const atrNilai = atrSiri ? atrSiri[atrSiri.length - 1] : null;
       const h = skorSetup({
@@ -451,13 +479,17 @@ export function renderDashboard(host, pairId) {
         statusSesi: statusMasaOrder(now),
         berita: { senarai: [], bahaya: false, amaran: false, seterusnya: null },
         pasaranTutup: pasaranTutup(now),
+        tfLabel: mod.tfLabel,
+        bobotTrend: mod.bobotTrend,
+        ambangMasuk: mod.ambangMasuk,
+        atrMelonjak: mod.atrMelonjak,
       });
       return { verdict: h.verdict, skor: h.skor };
     };
 
     const trades = await backtestAsync(
       st.candles1h,
-      { skorFn, pairId: p.id, mula: 260, lookback: 400 },
+      { skorFn, pairId: p.id, mula: mod.backtest.mula, lookback: mod.backtest.lookback },
       (frac) => {
         if (majuEl) majuEl.textContent = `${Math.round(frac * 100)}%`;
       }
@@ -466,7 +498,7 @@ export function renderDashboard(host, pairId) {
     btn.disabled = false;
     const r = ringkasan(trades);
     if (!trades.length) {
-      out.innerHTML = `<p class="nota">Tiada isyarat lulus gate + ambang ${70} dalam tetingkap ini. Dengan gate MTF, ini normal untuk pasangan yang bercampur arah.</p>`;
+      out.innerHTML = `<p class="nota">Tiada isyarat lulus gate + ambang ${mod.ambangMasuk} dalam tetingkap ini. Dengan gate MTF, ini normal untuk pasangan yang bercampur arah.</p>`;
       return;
     }
 
