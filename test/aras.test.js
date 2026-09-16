@@ -110,3 +110,55 @@ describe("kedudukanAras", () => {
     expect(kedudukanAras(100, null, 1).rintangan).toBe(null);
   });
 });
+
+describe("pengelompokan paras — tiada chaining", () => {
+  // Titik ayun yang berjarak sama, setiap satu dalam toleransi jiran terdekatnya.
+  // Pautan-tunggal akan merantai kesemuanya jadi SATU "paras" yang merentangi 0.0040;
+  // pengelompokan terbatas mesti memecahkannya jadi beberapa paras sebenar.
+  function siriBerantai() {
+    const c = [];
+    // ATR ≈ 0.0010 → toleransi 0.5 × ATR = 0.0005.
+    // Ayun pada 1.1000, 1.1004, 1.1008, 1.1012 … setiap satu 0.0004 dari yang sebelum.
+    const harga = [1.1, 1.1004, 1.1008, 1.1012, 1.1016];
+    let t = 0;
+    for (const h of harga) {
+      c.push({ t: t++, o: 1.09, h: 1.09, l: 1.089, c: 1.09 });
+      c.push({ t: t++, o: 1.09, h: 1.09, l: 1.089, c: 1.09 });
+      c.push({ t: t++, o: h - 0.0002, h, l: h - 0.0004, c: h - 0.0002 }); // ayun tinggi
+      c.push({ t: t++, o: 1.09, h: 1.09, l: 1.089, c: 1.09 });
+      c.push({ t: t++, o: 1.09, h: 1.09, l: 1.089, c: 1.09 });
+    }
+    c.push({ t: t++, o: 1.08, h: 1.0801, l: 1.0799, c: 1.08 }); // harga semasa jauh di bawah
+    return c;
+  }
+
+  it("tiada paras lebih lebar daripada toleransi pengelompokan", () => {
+    const c = siriBerantai();
+    const atrNilai = 0.001;
+    const toleransi = 0.5 * atrNilai;
+    const a = arasSR(c, atrNilai);
+    const semua = [...a.sokongan, ...a.rintangan];
+    expect(semua.length).toBeGreaterThan(1); // dipecahkan, bukan dirantai jadi satu
+    // Setiap paras mesti mewakili ayun dalam satu tetingkap toleransi — dengan 5 ayun
+    // berjarak 0.0004 dan toleransi 0.0005, tiada kumpulan boleh memuatkan kesemuanya.
+    for (const p of semua) expect(p.sentuhan).toBeLessThan(5);
+    void toleransi;
+  });
+
+  it("ayun pada harga yang benar-benar sama masih bergabung jadi satu paras", () => {
+    const c = [];
+    let t = 0;
+    for (let i = 0; i < 4; i++) {
+      c.push({ t: t++, o: 1.09, h: 1.09, l: 1.089, c: 1.09 });
+      c.push({ t: t++, o: 1.09, h: 1.09, l: 1.089, c: 1.09 });
+      c.push({ t: t++, o: 1.0998, h: 1.1, l: 1.0996, c: 1.0998 }); // ayun sama: 1.1000
+      c.push({ t: t++, o: 1.09, h: 1.09, l: 1.089, c: 1.09 });
+      c.push({ t: t++, o: 1.09, h: 1.09, l: 1.089, c: 1.09 });
+    }
+    c.push({ t: t++, o: 1.08, h: 1.0801, l: 1.0799, c: 1.08 });
+    const a = arasSR(c, 0.001);
+    const kuat = [...a.sokongan, ...a.rintangan].find((p) => p.sentuhan >= 4);
+    expect(kuat).toBeTruthy();
+    expect(kuat.harga).toBeCloseTo(1.1, 4);
+  });
+});

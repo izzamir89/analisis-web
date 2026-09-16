@@ -9,6 +9,18 @@ import { bacaJSON, simpanJSON, escapeHtml } from "./store.js";
 import { amaranPendedahan, bakiRisikoHarian } from "./risk.js";
 import { ambilOHLC, bacaTetapanApi, simpanTetapanApi } from "./marketdata.js";
 import { atr as kiraAtr } from "./indicators.js";
+import {
+  bacaKos,
+  simpanKos,
+  nilaiKos,
+  rekodSpread,
+  bacaBacaan,
+  padamBacaan,
+  ringkasBacaan,
+  spreadBerkesan,
+  sesiLabel,
+  MIN_BACAAN_SESI,
+} from "./kos.js";
 
 export const RR_MIN = 1.5;
 
@@ -147,6 +159,26 @@ export function renderKalkulator(host, awal = null) {
       <span id="status-api" class="nota"></span>
     </details>
 
+    <details class="kotak tetapan-kos" id="tetapan-kos">
+      <summary>💸 Kos dagangan (spread &amp; komisen)</summary>
+      <p class="nota">Nilai lalai di bawah ialah <b>anggaran berhemat, bukan kadar broker anda</b>. Betulkan ikut broker sendiri — kos ini menentukan sama ada setup SL-rapat (terutama scalp M5) berbaloi secara matematik. Komisen ditukar ke pip-setara: cth $7/lot pusing-balik pada EURUSD ≈ 0.7 pip.</p>
+      <div id="kos-senarai"></div>
+      <label class="nota"><input type="checkbox" id="kos-disahkan"> Saya sudah semak nilai ini terhadap broker saya</label>
+      <span id="status-kos" class="nota"></span>
+
+      <h4>📏 Rakam spread sebenar</h4>
+      <p class="nota">Broker menulis "spread <b>dari</b> X pip" — itu kes terbaik pada saat paling tenang, bukan apa yang anda bayar.
+        Baca spread langsung dari platform anda dan rakam di sini. Bacaan ditandai mengikut <b>sesi</b>, dan app akan guna
+        bacaan sesi semasa apabila menilai setup. Sesi yang belum diukur jatuh ke bacaan <b>terburuk</b> anda — bukan yang terbaik.</p>
+      <div class="kos-rakam">
+        <select id="rakam-pair" aria-label="Pasangan">${opsiPair}</select>
+        <input id="rakam-pip" type="number" step="any" inputmode="decimal" placeholder="spread (pip)" aria-label="Spread dalam pip">
+        <button type="button" class="btn-kecil" id="rakam-simpan">Rakam sekarang</button>
+      </div>
+      <p class="nota" id="rakam-sesi"></p>
+      <div id="rakam-ringkas"></div>
+    </details>
+
     <form id="form-kira" class="kira">
       <p class="nota">Baca <b>harga semasa</b> dan <b>ATR(14)</b> dari carta TradingView (atau tekan <b>Auto</b> jika kunci API disetkan), kemudian masukkan di bawah. Semua pengiraan dibuat di telefon — tiada data dihantar ke mana-mana (kecuali data pasaran & kadar tukaran bila diminta).</p>
       <label>Pasangan
@@ -242,6 +274,112 @@ export function renderKalkulator(host, awal = null) {
     const lbl = { api: "langsung", cache: "cache" }[sumber] || sumber;
     statusAtrEl.textContent = `✅ ATR(14) & harga diisi (sumber: ${lbl}). Boleh disunting.`;
   });
+
+  // ---- Tetapan kos (spread + komisen setiap pasangan) ----
+  const kosSenaraiEl = host.querySelector("#kos-senarai");
+  const kosDisahkanEl = host.querySelector("#kos-disahkan");
+  const statusKosEl = host.querySelector("#status-kos");
+
+  function lukisKos() {
+    const t = bacaKos();
+    kosDisahkanEl.checked = t.disahkan;
+    kosSenaraiEl.innerHTML = `
+      <table class="hasil kos-t">
+        <tr><th>Pasangan</th><th>Spread (pip)</th><th>Komisen (pip)</th></tr>
+        ${PAIRS.map(
+          (pr) => `<tr>
+            <td>${escapeHtml(pr.id)}</td>
+            <td><input class="kos-spread" data-pair="${pr.id}" type="number" step="any" inputmode="decimal" value="${t.spread[pr.id] ?? ""}"></td>
+            <td><input class="kos-komisen" data-pair="${pr.id}" type="number" step="any" inputmode="decimal" value="${t.komisen[pr.id] ?? ""}" placeholder="0"></td>
+          </tr>`
+        ).join("")}
+      </table>`;
+
+    const simpanMedan = (el, medan) => {
+      el.addEventListener("change", () => {
+        const nilai = Number(el.value);
+        simpanKos({ [medan]: { [el.dataset.pair]: Number.isFinite(nilai) ? nilai : 0 } });
+        statusKosEl.textContent = `✅ Kos ${el.dataset.pair} dikemas kini.`;
+      });
+    };
+    kosSenaraiEl.querySelectorAll(".kos-spread").forEach((el) => simpanMedan(el, "spread"));
+    kosSenaraiEl.querySelectorAll(".kos-komisen").forEach((el) => simpanMedan(el, "komisen"));
+  }
+
+  // ---- Perakam spread ----
+  const rakamPairEl = host.querySelector("#rakam-pair");
+  const rakamPipEl = host.querySelector("#rakam-pip");
+  const rakamSesiEl = host.querySelector("#rakam-sesi");
+  const rakamRingkasEl = host.querySelector("#rakam-ringkas");
+
+  function lukisRakam() {
+    const pairId = rakamPairEl.value;
+    const now = new Date();
+    const bacaan = bacaBacaan(pairId);
+    const r = ringkasBacaan(bacaan);
+    const berkesan = spreadBerkesan(bacaan, bacaKos().spread[pairId], now);
+
+    rakamSesiEl.innerHTML = `Sesi sekarang: <b>${escapeHtml(sesiLabel(now))}</b> · app sedang guna
+      <b>${berkesan.pip.toFixed(1)} pip</b> untuk ${escapeHtml(pairId)}
+      (${
+        {
+          "diukur-sesi": "diukur pada sesi ini",
+          "maks-diukur": "terburuk yang anda rakam",
+          lalai: "anggaran — belum diukur",
+        }[berkesan.sumber]
+      }).`;
+
+    const sesiBaris = Object.entries(r.ikutSesi)
+      .sort((a, b) => b[1].n - a[1].n)
+      .map(
+        ([sesi, s]) => `<tr>
+          <td>${escapeHtml(sesi)}</td>
+          <td>${s.median.toFixed(1)}</td>
+          <td class="nota">${s.min.toFixed(1)}–${s.maks.toFixed(1)}</td>
+          <td class="nota">${s.n}${s.cukup ? "" : ` <span title="perlu ≥${MIN_BACAAN_SESI}">⚠️</span>`}</td>
+        </tr>`
+      )
+      .join("");
+
+    rakamRingkasEl.innerHTML = r.n
+      ? `<table class="hasil kos-t">
+           <tr><th>Sesi</th><th>Median</th><th>Julat</th><th>N</th></tr>
+           ${sesiBaris}
+         </table>
+         <p class="nota">Sesi bertanda ⚠️ perlu sekurang-kurangnya ${MIN_BACAAN_SESI} bacaan sebelum mediannya digunakan.
+           Rakam sekali semasa Asia, sekali semasa London, sekali semasa overlap London–NY — itu sudah memberi gambaran sebenar.</p>
+         <button type="button" class="btn-buang" id="rakam-padam">Padam bacaan ${escapeHtml(pairId)}</button>`
+      : `<p class="nota">Belum ada bacaan untuk ${escapeHtml(pairId)}.</p>`;
+
+    const padamBtn = rakamRingkasEl.querySelector("#rakam-padam");
+    if (padamBtn) {
+      padamBtn.addEventListener("click", () => {
+        padamBacaan(pairId);
+        lukisRakam();
+      });
+    }
+  }
+
+  rakamPairEl.addEventListener("change", lukisRakam);
+  host.querySelector("#rakam-simpan").addEventListener("click", () => {
+    const b = rekodSpread(rakamPairEl.value, rakamPipEl.value, new Date());
+    if (!b) {
+      statusKosEl.textContent = "⚠️ Masukkan nilai spread yang sah.";
+      return;
+    }
+    rakamPipEl.value = "";
+    statusKosEl.textContent = `✅ ${b.pip} pip dirakam untuk ${b.pairId} (${b.sesi}).`;
+    lukisRakam();
+  });
+  lukisRakam();
+
+  kosDisahkanEl.addEventListener("change", () => {
+    simpanKos({ disahkan: kosDisahkanEl.checked });
+    statusKosEl.textContent = kosDisahkanEl.checked
+      ? "✅ Ditanda disahkan — app tidak akan lagi melabelkannya anggaran."
+      : "Masih dianggap anggaran.";
+  });
+  lukisKos();
 
   // ---- Panel risiko: had kerugian harian + pendedahan mata wang terbuka ----
   function lukisRisiko() {
@@ -348,6 +486,21 @@ export function renderKalkulator(host, awal = null) {
       ? `<div class="kotak amaran">⚠️ ${r.amaran.join("<br>")}</div>`
       : "";
     const akaunHtml = notaAkaun ? `<p class="nota">${escapeHtml(notaAkaun)}</p>` : "";
+
+    // Kos: nombor yang menentukan sama ada setup ini berbaloi langsung.
+    const k = nilaiKos({ pairId: r.pair.id, slPip: r.slPip, rr: r.rr });
+    const kosHtml =
+      k && k.kosR != null
+        ? `<div class="kotak ${k.gate ? "ralat" : k.amaran ? "amaran" : ""} kos-hasil">
+             <b>${k.gate ? "⛔" : k.amaran ? "⚠️" : "💸"} Selepas kos</b>
+             <table class="hasil">
+               <tr><td>Spread + komisen</td><td>${k.kosPip.toFixed(1)} pip (${Math.round(k.kosR * 100)}% daripada risiko)</td></tr>
+               <tr><td>R:R bersih (TP1)</td><td><b>1:${k.rrBersih.toFixed(2)}</b> <span class="pip">(mentah 1:${r.rr})</span></td></tr>
+               <tr><td>Perlu menang</td><td>${Math.round(k.kadarPulangModal * 100)}% sekadar pulang modal</td></tr>
+             </table>
+             ${k.gate ? `<p class="nota">${escapeHtml(k.sebab)}</p>` : ""}
+           </div>`
+        : "";
     hasil.innerHTML = `
       <div class="kotak">
         <h3>${r.pair.id} — ${r.arah}</h3>
@@ -359,6 +512,7 @@ export function renderKalkulator(host, awal = null) {
           <tr><td>Take Profit 3</td><td class="tp">${r.tp3} <span class="pip">(${r.tp3Pip} pip · R:R ${r.rr3})</span></td></tr>
           ${lotBaris}
         </table>
+        ${kosHtml}
         ${amaranHtml}
         ${akaunHtml}
         <button type="button" class="btn-kedua" id="simpan-jurnal">📒 Simpan ke Jurnal</button>

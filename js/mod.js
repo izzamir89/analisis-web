@@ -19,7 +19,16 @@ export const MOD = {
     tfLabel: { lo: "1J", mid: "4J", hi: "Harian" },
     bobotTrend: { hi: 20, mid: 10, lo: 10 }, // jumlah = 40 (MAKS.trend)
     saiz: { lo: 1500, mid: 750, hi: 400 },
-    ambangMasuk: 70,
+    // Di-anchor semula dari 70 → 65 apabila baldi berita diturunkan 10 → 5 markah.
+    // Ini ARITMETIK, bukan pelonggaran: setiap skor kehilangan sehingga 5 markah pada
+    // penimbangan semula, jadi mengekalkan ambang 70 akan secara senyap menjadikan
+    // kemasukan lebih ketat, bukan sama. Diukur: ambang 65 memberi 23.9% kadar isyarat
+    // berbanding 18.6% pada enjin asal — lebih banyak isyarat daripada enjin yang
+    // gate-nya lebih baik, bukan daripada memindahkan tiang gol.
+    //
+    // Ini kekal nilai PERMULAAN. Gunakan walk-forward (js/walkforward.js) atas data
+    // anda sendiri untuk menalanya — itulah satu-satunya cara jujur menetapkan ambang.
+    ambangMasuk: 65,
     atrMelonjak: 0.012,
     kalk: { pengganda: 1.5, rr: 2 },
     backtest: { mula: 260, lookback: 400 },
@@ -38,10 +47,11 @@ export const MOD = {
     tfLabel: { lo: "M5", mid: "M15", hi: "H1" },
     bobotTrend: { hi: 20, mid: 10, lo: 10 }, // H1 20 · M15 10 · M5 10
     saiz: { lo: 1500, mid: 760, hi: 400 },
-    ambangMasuk: 70,
-    // ATR% (atr/harga) pada M5 jauh lebih kecil daripada 1J → ambang gate lonjakan
-    // mesti lebih rendah. 0.004 (0.4%) ialah TEKAAN AWAL — WAJIB dikalibrasi guna
-    // keputusan backtest sebenar; laras jika gate terlalu kerap/jarang menyala.
+    ambangMasuk: 65, // di-anchor semula bersama swing — lihat nota di atas
+    // Kekal sebagai jaring keselamatan sahaja. Gate volatiliti sebenar kini RELATIF
+    // (ATR semasa vs median terkini, lihat ATR_LONJAK_NISBAH dalam scoring.js) kerana
+    // ambang mutlak terukur tidak pernah menyala: ATR% 1J purata 0.092% berbanding gate
+    // swing 1.2%, dan M5 lebih kecil lagi berbanding gate 0.4% ini.
     atrMelonjak: 0.004,
     kalk: { pengganda: 1.0, rr: 1.5 }, // SL/TP lebih ketat untuk scalp
     backtest: { mula: 260, lookback: 500 },

@@ -15,7 +15,9 @@ describe("preset MOD", () => {
 
   it("swing kekal 1J/4J/Harian (regresi tingkah laku asal)", () => {
     expect(MOD.swing.tf).toEqual({ lo: "60", mid: "240", hi: "D" });
-    expect(MOD.swing.ambangMasuk).toBe(70);
+    // 65, bukan 70: di-anchor semula apabila baldi berita turun 10 → 5 markah supaya
+    // penimbangan semula kekal neutral-skala. Lihat nota dalam js/mod.js.
+    expect(MOD.swing.ambangMasuk).toBe(65);
     expect(MOD.swing.atrMelonjak).toBe(0.012);
     expect(MOD.swing.rute).toBe("dashboard");
   });

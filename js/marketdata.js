@@ -158,7 +158,7 @@ function tunggu(ms) {
 // Ms baki sehingga tetingkap kiraan-seminit reset, + buffer kecil elak
 // race condition tepat di sempadan minit (jam sistem/rangkaian tak segerak sempurna).
 function msSehinggaResetMinit(now) {
-  return (60_000 - (now % 60_000)) + 250;
+  return 60_000 - (now % 60_000) + 250;
 }
 
 // ---- Ambil OHLC (I/O) ----

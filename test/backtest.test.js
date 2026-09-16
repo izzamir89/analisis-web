@@ -145,3 +145,42 @@ describe("backtestAsync", () => {
     }
   });
 });
+
+describe("kos dagangan", () => {
+  it("tanpa kos → R penuh (kelakuan lama)", () => {
+    const [menang] = backtest(winCandles, opts(buyDi3));
+    expect(menang.rSebenar).toBeCloseTo(2, 10);
+    expect(menang.kosR).toBeCloseTo(0, 10);
+    const [kalah] = backtest(lossCandles, opts(buyDi3));
+    expect(kalah.rSebenar).toBeCloseTo(-1, 10);
+  });
+
+  it("kos ditolak dari menang DAN ditambah kepada kalah", () => {
+    // jarakSL = slMult(1) × ATR(≈1) = 1; kosHarga 0.1 → kosR ≈ 0.1
+    const [menang] = backtest(winCandles, opts(buyDi3, { kosHarga: 0.1 }));
+    expect(menang.kosR).toBeCloseTo(0.1, 6);
+    expect(menang.rSebenar).toBeCloseTo(1.9, 6); // 2 − 0.1
+    const [kalah] = backtest(lossCandles, opts(buyDi3, { kosHarga: 0.1 }));
+    expect(kalah.rSebenar).toBeCloseTo(-1.1, 6); // −1 − 0.1
+  });
+
+  it("kos menolak expectancy ke bawah — sistem 50/50 pada RR 2 jadi lebih nipis", () => {
+    const tanpa = ringkasan([
+      ...backtest(winCandles, opts(buyDi3)),
+      ...backtest(lossCandles, opts(buyDi3)),
+    ]);
+    const dengan = ringkasan([
+      ...backtest(winCandles, opts(buyDi3, { kosHarga: 0.1 })),
+      ...backtest(lossCandles, opts(buyDi3, { kosHarga: 0.1 })),
+    ]);
+    expect(dengan.expectancyR).toBeLessThan(tanpa.expectancyR);
+  });
+
+  it("skorTeras dibawa ke entri dagangan untuk penjaluran", () => {
+    const fn = (_win, i) =>
+      i === 3 ? { verdict: "BUY", skor: 82, skorTeras: 72 } : { verdict: "WAIT" };
+    const [t] = backtest(winCandles, opts(fn));
+    expect(t.skor).toBe(82);
+    expect(t.skorTeras).toBe(72);
+  });
+});

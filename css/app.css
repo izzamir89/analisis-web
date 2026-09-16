@@ -1141,3 +1141,90 @@ table.hasil td:last-child {
   font-size: 15px;
   padding: 0 4px;
 }
+
+/* ---- Syarat "tunggu" (menggantikan pelan tentatif) ---- */
+.db-pelan-tunggu {
+  border-left: 3px solid var(--kuning);
+}
+.db-syarat {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0;
+}
+.db-syarat li {
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  background: var(--bg3);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ---- Kos dagangan ---- */
+.db-kos {
+  border-top: 1px solid var(--garis);
+  padding-top: 8px;
+  margin-top: 8px;
+}
+.kos-hasil {
+  margin-top: 10px;
+}
+.kos-t input {
+  width: 100%;
+  max-width: 90px;
+  padding: 4px 6px;
+}
+
+/* ---- Walk-forward ---- */
+.wf-terbaik td {
+  background: var(--bg3);
+  font-weight: 600;
+}
+.db-wf-nilai {
+  margin: 10px 0 0;
+  padding: 10px;
+  background: var(--bg3);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* ---- Scanner ---- */
+.scan-t td {
+  vertical-align: top;
+}
+.scan-t td:first-child {
+  white-space: nowrap;
+}
+.scan-boleh td {
+  background: rgba(22, 163, 74, 0.08);
+}
+.scan-mati td {
+  opacity: 0.62;
+}
+.scan-t .nota {
+  font-size: 12.5px;
+  line-height: 1.45;
+}
+
+/* ---- Perakam spread ---- */
+.kos-rakam {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+.kos-rakam select,
+.kos-rakam input {
+  flex: 1 1 100px;
+  min-width: 0;
+  padding: 6px 8px;
+}
+.kos-rakam button {
+  flex: 0 0 auto;
+}
+.tetapan-kos h4 {
+  margin: 16px 0 4px;
+  border-top: 1px solid var(--garis);
+  padding-top: 12px;
+}

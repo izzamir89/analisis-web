@@ -6,6 +6,7 @@ import {
   kelukEkuiti,
   streak,
   sesiEntri,
+  kalahBerturutHariIni,
 } from "../js/analytics.js";
 
 // Fikstur: cap masa tetap (UTC). Rabu 14:00 UTC = sesi London aktif.
@@ -86,5 +87,49 @@ describe("sesiEntri", () => {
   it("derive sesi dari cap masa", () => {
     // Rabu 14:00 UTC (musim sejuk): London & New York aktif → utama = London.
     expect(sesiEntri({ ts: t(14) })).toBe("London");
+  });
+});
+
+describe("kalahBerturutHariIni", () => {
+  const now = new Date("2024-06-12T18:00:00Z");
+  const jam = (h, hasil) => ({ ts: `2024-06-12T${String(h).padStart(2, "0")}:00:00Z`, hasil });
+
+  it("mengira rentetan SEMASA dari dagangan terbaharu ke belakang", () => {
+    expect(kalahBerturutHariIni([jam(9, "loss"), jam(10, "loss"), jam(11, "loss")], now)).toBe(3);
+  });
+
+  it("kemenangan memutuskan rentetan walaupun banyak kalah lebih awal", () => {
+    // 3 kalah, kemudian menang → rentetan semasa ialah 0, bukan 3.
+    const list = [jam(9, "loss"), jam(10, "loss"), jam(11, "loss"), jam(12, "win")];
+    expect(kalahBerturutHariIni(list, now)).toBe(0);
+  });
+
+  it("mengira semula selepas kemenangan", () => {
+    const list = [jam(9, "loss"), jam(10, "win"), jam(11, "loss"), jam(12, "loss")];
+    expect(kalahBerturutHariIni(list, now)).toBe(2);
+  });
+
+  it("kekalahan semalam tidak dikira", () => {
+    const semalam = [
+      { ts: "2024-06-11T09:00:00Z", hasil: "loss" },
+      { ts: "2024-06-11T10:00:00Z", hasil: "loss" },
+      { ts: "2024-06-11T11:00:00Z", hasil: "loss" },
+    ];
+    expect(kalahBerturutHariIni(semalam, now)).toBe(0);
+  });
+
+  it("BE dilangkau, bukan dikira sebagai pemutus rentetan", () => {
+    const list = [jam(9, "loss"), jam(10, "be"), jam(11, "loss")];
+    expect(kalahBerturutHariIni(list, now)).toBe(2);
+  });
+
+  it("dagangan terbuka diabaikan", () => {
+    const list = [jam(9, "loss"), jam(10, "loss"), jam(13, "open")];
+    expect(kalahBerturutHariIni(list, now)).toBe(2);
+  });
+
+  it("senarai kosong / tak sah → 0, tiada throw", () => {
+    expect(kalahBerturutHariIni([], now)).toBe(0);
+    expect(kalahBerturutHariIni(null, now)).toBe(0);
   });
 });

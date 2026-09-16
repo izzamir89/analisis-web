@@ -8,13 +8,23 @@
 import { swingPoints } from "./smc.js";
 
 // Kelompokkan senarai {i, price} jadi paras. Kembalikan diisih menaik ikut harga.
+//
+// PEPIJAT YANG DIBETULKAN (chaining pautan-tunggal): versi asal membandingkan setiap
+// titik dengan titik TERAKHIR dalam kumpulan semasa. Titik boleh berantai tanpa had —
+// A dekat B, B dekat C, C dekat D — sehingga satu "paras" merentangi julat yang jauh
+// lebih lebar daripada toleransi. Diukur pada 400 lilin, ini menghasilkan "paras"
+// dengan 105 sentuhan: itu bukan paras, itu keseluruhan julat harga, dan harga
+// puratanya tidak bermakna apa-apa.
+//
+// Sekarang lebar kumpulan dibandingkan dengan ahli PERTAMA (senarai sudah diisih
+// menaik), jadi tiada kumpulan boleh lebih lebar daripada toleransi.
 function kelompok(titik, toleransi) {
   if (!titik.length) return [];
   const isih = [...titik].sort((a, b) => a.price - b.price);
   const keluar = [];
   let semasa = [isih[0]];
   for (let i = 1; i < isih.length; i++) {
-    if (isih[i].price - semasa[semasa.length - 1].price <= toleransi) {
+    if (isih[i].price - semasa[0].price <= toleransi) {
       semasa.push(isih[i]);
     } else {
       keluar.push(semasa);

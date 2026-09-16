@@ -2,6 +2,7 @@
 // Tangkap setup dari kalkulator sekali tekan; analitik bantu cari kelebihan (edge).
 import { bacaJSON, simpanJSON, escapeHtml } from "./store.js";
 import { ringkasan, ikutKumpulan, kelukEkuiti, streak, sesiEntri } from "./analytics.js";
+import { untukAnalitik, baca as bacaVerdict, padamSemua as padamVerdict } from "./verdictlog.js";
 
 const KUNCI = "forex_journal";
 
@@ -135,6 +136,54 @@ function fmtR(x) {
   return x == null ? "—" : `${x >= 0 ? "+" : ""}${x.toFixed(2)}R`;
 }
 
+// Panel prestasi ENJIN — berbeza daripada prestasi ANDA di bawah.
+//
+// Ini menjejaki verdict BUY/SELL yang enjin keluarkan semasa penggunaan sebenar,
+// diselesaikan terhadap harga yang tiba SELEPASNYA. Tiada penalaan boleh menipunya:
+// setiap rekod ditulis sebelum lilin seterusnya wujud. Inilah satu-satunya bukti
+// luar-sampel tulen dalam keseluruhan app — backtest adalah in-sample, dan walk-forward
+// masih menala atas sejarah yang sama.
+function htmlPrestasiEnjin() {
+  const rekod = untukAnalitik();
+  const terbuka = rekod.filter((r) => r.hasil === "open").length;
+  const s = ringkasan(rekod);
+
+  if (!rekod.length) {
+    return `<div class="kotak" id="enjin-stat">
+      <h3>🤖 Prestasi Enjin <span class="nota">(luar sampel)</span></h3>
+      <p class="nota">Belum ada rekod. Setiap kali skrin Skor atau Scalp menghasilkan <b>BUY</b> atau <b>SELL</b>,
+        keputusan itu dilog di sini dan diselesaikan secara automatik terhadap harga kemudian —
+        tanpa mengira sama ada anda mengambil dagangan itu. Ini mengukur enjin, bukan anda.</p>
+    </div>`;
+  }
+
+  const cukup = s.ditutup >= 20;
+  return `<div class="kotak" id="enjin-stat">
+      <h3>🤖 Prestasi Enjin <span class="nota">(luar sampel)</span></h3>
+      <div class="metrik">
+        <div class="metrik-sel"><span class="mv ${s.expectancyR >= 0 ? "tp" : "sl"}">${fmtR(s.expectancyR)}</span><span class="ml">Expectancy / isyarat</span></div>
+        <div class="metrik-sel"><span class="mv">${s.kadarMenang == null ? "—" : s.kadarMenang + "%"}</span><span class="ml">Kadar menang</span></div>
+        <div class="metrik-sel"><span class="mv">${s.ditutup}</span><span class="ml">Isyarat selesai</span></div>
+        <div class="metrik-sel"><span class="mv">${terbuka}</span><span class="ml">Masih terbuka</span></div>
+      </div>
+      ${
+        cukup
+          ? `<p class="nota">Kos spread sudah ditolak. Bandingkan ini dengan kadar menang backtest pada skrin Skor —
+             jika angka di sini jauh lebih rendah, backtest itu optimistik dan patut dipercayai kurang.</p>`
+          : `<p class="nota">⚠️ <b>${s.ditutup}/20 isyarat selesai</b> — terlalu awal untuk membuat kesimpulan.
+             Angka ini menjadi bermakna sekitar 20-40 rekod.</p>`
+      }
+      ${jadualKumpulan(
+        "Ikut pasangan",
+        ikutKumpulan(
+          rekod.filter((r) => r.hasil !== "open"),
+          (e) => e.pairId
+        )
+      )}
+      <button type="button" class="btn-buang" id="enjin-padam">Padam log enjin</button>
+    </div>`;
+}
+
 // Bina UI jurnal dalam `host`.
 export function renderJurnal(host) {
   host.innerHTML = `
@@ -143,8 +192,10 @@ export function renderJurnal(host) {
       <button type="button" class="btn-kecil" id="jurnal-import">⬆️ Import JSON</button>
       <input type="file" id="jurnal-fail" accept="application/json,.json" hidden>
     </div>
+    <div id="enjin-wrap"></div>
     <div class="kotak" id="jurnal-stat"></div><div id="jurnal-senarai"></div>`;
   const statEl = host.querySelector("#jurnal-stat");
+  const enjinEl = host.querySelector("#enjin-wrap");
   const senaraiEl = host.querySelector("#jurnal-senarai");
   const failEl = host.querySelector("#jurnal-fail");
 
@@ -203,8 +254,23 @@ export function renderJurnal(host) {
       <p class="nota">Expectancy = purata R setiap dagangan. Isi <b>R sebenar</b> pada setiap baris untuk ketepatan; jika kosong, dianggarkan (menang = +R:R, kalah = −1, BE = 0).</p>`;
   }
 
+  function lukisEnjin() {
+    enjinEl.innerHTML = htmlPrestasiEnjin();
+    const padamBtn = enjinEl.querySelector("#enjin-padam");
+    if (padamBtn) {
+      padamBtn.addEventListener("click", () => {
+        if (!confirm(`Padam ${bacaVerdict().length} rekod log enjin? Tidak boleh dibatalkan.`)) {
+          return;
+        }
+        padamVerdict();
+        lukisEnjin();
+      });
+    }
+  }
+
   function lukis() {
     const list = baca();
+    lukisEnjin();
     lukisStat(list);
 
     if (!list.length) {

@@ -19,11 +19,12 @@ beforeEach(() => {
 const dagang = (skor, hasil) => ({ skor, hasil });
 
 describe("namaJalur", () => {
-  it("petakan skor ke jalur; luar julat → null", () => {
+  it("petakan skor TERAS ke jalur; luar julat → null", () => {
+    expect(namaJalur(65)).toBe("60-69");
     expect(namaJalur(75)).toBe("70-79");
-    expect(namaJalur(80)).toBe("80-89");
+    expect(namaJalur(85)).toBe("80-89");
     expect(namaJalur(100)).toBe("90-100");
-    expect(namaJalur(69)).toBe(null);
+    expect(namaJalur(59)).toBe(null);
     expect(namaJalur(101)).toBe(null);
   });
 });
@@ -31,23 +32,30 @@ describe("namaJalur", () => {
 describe("kumpulJalur", () => {
   it("kira n & menang setiap jalur", () => {
     const j = kumpulJalur([
-      dagang(72, "win"),
+      dagang(62, "win"),
       dagang(75, "loss"),
+      dagang(75, "win"),
       dagang(85, "win"),
-      dagang(95, "win"),
     ]);
+    expect(j["60-69"]).toEqual({ n: 1, menang: 1 });
     expect(j["70-79"]).toEqual({ n: 2, menang: 1 });
     expect(j["80-89"]).toEqual({ n: 1, menang: 1 });
-    expect(j["90-100"]).toEqual({ n: 1, menang: 1 });
   });
 
   it("dagangan tanpa skor atau di bawah ambang diabaikan", () => {
-    const j = kumpulJalur([dagang(65, "win"), { hasil: "win" }, dagang(null, "win")]);
+    const j = kumpulJalur([dagang(55, "win"), { hasil: "win" }, dagang(null, "win")]);
     for (const [b, a] of JALUR) expect(j[`${b}-${a}`]).toEqual({ n: 0, menang: 0 });
   });
 
   it("input tak sah → jalur kosong, tiada throw", () => {
     expect(kumpulJalur(null)["70-79"]).toEqual({ n: 0, menang: 0 });
+  });
+
+  it("utamakan skorTeras berbanding skor bila kedua-duanya ada", () => {
+    // Skor penuh 85 tetapi teras 75 (berita menyumbang 10) → mesti jatuh ke 70-79.
+    const j = kumpulJalur([{ skor: 85, skorTeras: 75, hasil: "win" }]);
+    expect(j["70-79"]).toEqual({ n: 1, menang: 1 });
+    expect(j["80-89"]).toEqual({ n: 0, menang: 0 });
   });
 });
 
@@ -62,8 +70,8 @@ describe("gabungSnapshot", () => {
   });
 
   it("snapshot null / kunci hilang tidak memecahkan agregat", () => {
-    const g = gabungSnapshot([null, {}, { "90-100": { n: 2, menang: 1 } }]);
-    expect(g["90-100"]).toEqual({ n: 2, menang: 1 });
+    const g = gabungSnapshot([null, {}, { "80-89": { n: 2, menang: 1 } }]);
+    expect(g["80-89"]).toEqual({ n: 2, menang: 1 });
     expect(g["70-79"]).toEqual({ n: 0, menang: 0 });
   });
 });
@@ -99,58 +107,81 @@ describe("kadarWilson", () => {
 });
 
 describe("snapshot — keidempotenan", () => {
-  it("simpan semula kunci SAMA menggantikan, tidak menggandakan sampel", () => {
+  it("simpan semula mod+pasangan SAMA menggantikan, tidak menggandakan sampel", () => {
     const jalur = { "70-79": { n: 40, menang: 24 } };
-    simpanSnapshot("EURUSD", 12345, jalur);
-    expect(agregat()["70-79"].n).toBe(40);
-    // Jalankan backtest sekali lagi pada data yang sama.
-    simpanSnapshot("EURUSD", 12345, jalur);
-    simpanSnapshot("EURUSD", 12345, jalur);
-    expect(agregat()["70-79"].n).toBe(40);
+    simpanSnapshot("swing", "EURUSD", jalur, { tsData: 12345 });
+    expect(agregat("swing")["70-79"].n).toBe(40);
+    simpanSnapshot("swing", "EURUSD", jalur, { tsData: 12345 });
+    simpanSnapshot("swing", "EURUSD", jalur, { tsData: 12345 });
+    expect(agregat("swing")["70-79"].n).toBe(40);
   });
 
-  it("pasangan berbeza atau data lebih baharu berkumpul", () => {
-    simpanSnapshot("EURUSD", 111, { "70-79": { n: 20, menang: 10 } });
-    simpanSnapshot("GBPUSD", 111, { "70-79": { n: 15, menang: 9 } });
-    simpanSnapshot("EURUSD", 222, { "70-79": { n: 5, menang: 3 } });
-    expect(agregat()["70-79"]).toEqual({ n: 40, menang: 22 });
+  // Ini pepijat yang dibetulkan: dalam v1 cap masa data ialah sebahagian kunci, jadi
+  // menjalankan backtest semula esok mencipta sampel "baharu" walaupun dagangannya
+  // hampir sepenuhnya bertindih — n menggelembung dan selang Wilson jadi palsu-sempit.
+  it("backtest semula pada data LEBIH BAHARU menggantikan, bukan menambah", () => {
+    simpanSnapshot("swing", "EURUSD", { "70-79": { n: 20, menang: 10 } }, { tsData: 111 });
+    simpanSnapshot("swing", "EURUSD", { "70-79": { n: 22, menang: 12 } }, { tsData: 999 });
+    expect(agregat("swing")["70-79"]).toEqual({ n: 22, menang: 12 });
+  });
+
+  it("pasangan berbeza dalam mod sama berkumpul", () => {
+    simpanSnapshot("swing", "EURUSD", { "70-79": { n: 20, menang: 10 } });
+    simpanSnapshot("swing", "GBPUSD", { "70-79": { n: 15, menang: 9 } });
+    expect(agregat("swing")["70-79"]).toEqual({ n: 35, menang: 19 });
+  });
+
+  // Pepijat kedua yang dibetulkan: scalp M5 dan swing Harian pernah berkongsi kolam
+  // yang sama, jadi "kadar menang" pada skrin Swing boleh berasal dari dagangan Scalp.
+  it("mod berbeza TIDAK bercampur", () => {
+    simpanSnapshot("swing", "EURUSD", { "70-79": { n: 20, menang: 16 } });
+    simpanSnapshot("scalp", "EURUSD", { "70-79": { n: 50, menang: 10 } });
+    expect(agregat("swing")["70-79"]).toEqual({ n: 20, menang: 16 });
+    expect(agregat("scalp")["70-79"]).toEqual({ n: 50, menang: 10 });
   });
 
   it("padamSnapshot mengosongkan agregat", () => {
-    simpanSnapshot("EURUSD", 111, { "70-79": { n: 20, menang: 10 } });
+    simpanSnapshot("swing", "EURUSD", { "70-79": { n: 20, menang: 10 } });
     padamSnapshot();
-    expect(agregat()["70-79"]).toEqual({ n: 0, menang: 0 });
+    expect(agregat("swing")["70-79"]).toEqual({ n: 0, menang: 0 });
   });
 });
 
 describe("bacaJalur — kejujuran sampel", () => {
   it(`di bawah ${MIN_SAMPEL} sampel → cukup:false`, () => {
-    simpanSnapshot("EURUSD", 1, { "80-89": { n: MIN_SAMPEL - 1, menang: 20 } });
-    const r = bacaJalur(85);
+    simpanSnapshot("swing", "EURUSD", { "80-89": { n: MIN_SAMPEL - 1, menang: 20 } });
+    const r = bacaJalur(85, "swing");
     expect(r.cukup).toBe(false);
     expect(r.n).toBe(MIN_SAMPEL - 1);
     expect(r.min).toBe(MIN_SAMPEL);
   });
 
   it("pada atau melebihi minimum → cukup:true dengan kadar & selang", () => {
-    simpanSnapshot("EURUSD", 1, { "80-89": { n: 50, menang: 30 } });
-    const r = bacaJalur(85);
+    simpanSnapshot("swing", "EURUSD", { "80-89": { n: 50, menang: 30 } });
+    const r = bacaJalur(85, "swing");
     expect(r.cukup).toBe(true);
     expect(r.kadar).toBeCloseTo(0.6, 5);
     expect(r.bawah).toBeLessThan(r.kadar);
     expect(r.atas).toBeGreaterThan(r.kadar);
     expect(r.nama).toBe("80-89");
+    expect(r.pasangan).toEqual(["EURUSD"]);
   });
 
-  it("skor di bawah ambang masuk → tiada jalur, tidak mencukupi", () => {
-    const r = bacaJalur(55);
+  it("skor teras di bawah ambang masuk → tiada jalur, tidak mencukupi", () => {
+    const r = bacaJalur(45, "swing");
     expect(r.nama).toBe(null);
     expect(r.cukup).toBe(false);
   });
 
   it("tiada snapshot langsung → n 0, cukup:false", () => {
-    const r = bacaJalur(85);
+    const r = bacaJalur(85, "swing");
     expect(r.n).toBe(0);
     expect(r.cukup).toBe(false);
+  });
+
+  it("membaca mod yang salah tidak meminjam sampel mod lain", () => {
+    simpanSnapshot("scalp", "EURUSD", { "80-89": { n: 80, menang: 60 } });
+    expect(bacaJalur(85, "swing").n).toBe(0);
+    expect(bacaJalur(85, "scalp").n).toBe(80);
   });
 });

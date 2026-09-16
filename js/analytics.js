@@ -95,6 +95,36 @@ export function kelukEkuiti(list) {
   });
 }
 
+// Kekalahan berturut SEMASA pada hari kalendar tempatan `now`. Tulen.
+//
+// Menyuap gate berhenti-paksa dalam scoring.js. Dikira dari dagangan paling BAHARU ke
+// belakang: yang penting ialah rentetan semasa, bukan rentetan terburuk hari itu — satu
+// pedagang yang kalah tiga kali kemudian menang sekali tidak berada dalam lubang yang
+// sama seperti seorang yang baru sahaja kalah tiga kali berturut-turut.
+//
+// BE tidak dikira sebagai menang mahupun kalah; ia dilangkau sepenuhnya.
+export function kalahBerturutHariIni(list, now = new Date()) {
+  const d0 = now instanceof Date ? now : new Date(now);
+  const hariIni = (Array.isArray(list) ? list : [])
+    .filter((e) => e && e.ts && (e.hasil === "win" || e.hasil === "loss"))
+    .filter((e) => {
+      const d = new Date(e.ts);
+      return (
+        d.getFullYear() === d0.getFullYear() &&
+        d.getMonth() === d0.getMonth() &&
+        d.getDate() === d0.getDate()
+      );
+    })
+    .sort((a, b) => new Date(b.ts) - new Date(a.ts));
+
+  let kira = 0;
+  for (const e of hariIni) {
+    if (e.hasil !== "loss") break;
+    kira++;
+  }
+  return kira;
+}
+
 // Streak menang/kalah: semasa (bertanda +/−) & maksimum setiap arah.
 export function streak(list) {
   const tutup = list

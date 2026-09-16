@@ -10,11 +10,11 @@ Ini "adik ringan" kepada projek engine AI `analysisChart` — beberapa nilai dic
 
 ## Dashboard Skor (enjin peraturan)
 
-Skrin **📊 Skor** (`#dashboard/EURUSD`) menggabungkan data pasaran sebenar jadi satu **skor 0–100 + Gred Kualiti Dagangan (A+/A/B/C/D)** dan verdict **BUY/SELL/WAIT**:
+Skrin **📊 Skor** (`#dashboard/EURUSD`) menggabungkan data pasaran sebenar jadi satu **skor 0–100 + Gred Kualiti Dagangan (A+/A/B/C/D)** dan verdict **BUY/SELL/WAIT/NO TRADE**:
 
 - **Indikator dikira tempatan** dari OHLC ([`js/indicators.js`](js/indicators.js)): EMA(20/50/200), RSI(14), MACD, ADX, ATR(14) — penghalusan Wilder, fungsi tulen berujian.
 - **Kekuatan mata wang** dari % gerakan 8 pasangan; **Smart Money Concepts** (BOS/CHoCH/Order Block/Liquidity Grab, [`js/smc.js`](js/smc.js)) — **heuristik**, bukan aliran order institusi.
-- **Skor berwajaran** ([`js/scoring.js`](js/scoring.js)): Trend 20 · Kekuatan 15 · ATR 10 · Sesi 10 · Berita 10 · SMC 5 · Teknikal 30. Berita merah / pasaran tutup = _hard-gate_ paksa WAIT. `jelaskan()` menghasilkan penerangan Bahasa Melayu bertemplat ("coach" deterministik).
+- **Skor berwajaran** ([`js/scoring.js`](js/scoring.js)): Trend 40 · Momentum 25 · Smart Money 25 · Corak Lilin 5 · Berita 5 — lihat [AI Score v4](#ai-score-v4--100-mata) untuk sebab berat ini. Gate keras (berita merah, pasaran tutup, kos, had risiko harian) memaksa `NO TRADE`. `jelaskan()` menghasilkan penerangan Bahasa Melayu bertemplat ("coach" deterministik).
 - **Auto-ATR** di Kalkulator + **TP2** (nisbah R:R kedua). **Backtest tetingkap-pendek** memainkan semula enjin atas lilin dimuat → suap ke analitik jurnal sedia ada.
 
 ### Sediakan kunci API (pilihan)
@@ -31,6 +31,7 @@ Skrin **📊 Skor** (`#dashboard/EURUSD`) menggabungkan data pasaran sebenar jad
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 📊 **Skor**       | Dashboard skor (enjin peraturan): AI Confidence (deterministik), Gred Kualiti Dagangan, trend MTF, kekuatan mata wang, RSI/MACD/ADX/ATR, SMC & backtest — perlu kunci API pilihan              |
 | ⚡ **Scalp**      | Skrin **Scalping** — enjin skor yang SAMA tetapi mod pantas **M5/M15/H1** (SL/TP lebih ketat, gate ATR ditala). Analisis atas-permintaan; spread/komisen tidak dimodelkan — lihat had di bawah |
+| 🔎 **Scan**       | Imbas **kesemua** pasangan sekali jalan dengan enjin yang sama; memaparkan yang ditolak berserta sebab, supaya "tiada setup" ialah jawapan dan bukan tekaan (~24 kredit, cache percuma) |
 | 📋 **Watchlist**  | Jam sesi pasaran berbilang zon, badge "status masuk order" (kecairan sesi), ticker harga, tolok teknikal setiap pasangan                                                                       |
 | 🔎 **Screener**   | Senarai screener forex, heat map kekuatan mata wang, kadar silang, kalendar ekonomi                                                                                                            |
 | 🧮 **Kalkulator** | Kira SL/TP dari ATR, saiz lot dari risiko %, amaran R:R < 1.5, **Pengurus Risiko** (had kerugian harian + pendedahan berkorelasi), **akaun bukan-USD**, **setup tersimpan** → simpan ke Jurnal |
@@ -101,26 +102,46 @@ js/
   scoring.js    AI Score v3: enjin peraturan 100 mata + gate MTF/berita (tulen)
   backtest.js   Main semula enjin skor atas lilin sejarah → entri jurnal (tulen)
   mod.js        Preset "mod dagangan" — triad TF + tetapan skor/kalkulator (swing/scalp)
+  kos.js        Spread + komisen → kos dalam R, R:R bersih, gate kos + perakam spread ikut sesi
+  analisis.js   Pipeline satu-pasangan (lilin → keputusan) dikongsi Skor/Scalp & Scan
+  walkforward.js  Pilih ambang atas 70% awal, lapor atas 30% akhir — luar sampel (tulen)
+  verdictlog.js Log verdict langsung + resolusi automatik → bukti luar-sampel sebenar
+  scanner.js    Skrin Scan — nilai semua pasangan sekali jalan, ranking ikut kebolehdagangan
   dashboard.js  Skrin Skor & Scalp: keputusan + pelan dagangan + sebab + backtest (diparametrikan mod)
 test/           Ujian Vitest (214 ujian merentas semua modul tulen di atas)
 ```
 
-### AI Score v3 — 100 mata
+### AI Score v4 — 100 mata
 
-| Baldi       | Mata | Kandungan                                      |
-| ----------- | ---- | ---------------------------------------------- |
-| Trend (MTF) | 40   | Harian 20 · 4J 10 · 1J 10                      |
-| Momentum    | 20   | RSI 5 · MACD 5 · ADX 5 · Tekanan Pasaran 5     |
-| Smart Money | 20   | Bias struktur 8 · kedudukan vs paras 7 · zon 5 |
-| Corak Lilin | 10   | Corak 6 · bonus konfluens dengan paras 4       |
-| Berita      | 10   | Tiada acara impak tinggi berhampiran           |
+| Baldi       | Mata | Kandungan                                        |
+| ----------- | ---- | ------------------------------------------------ |
+| Trend (MTF) | 40   | Harian 20 · 4J 10 · 1J 10                        |
+| Momentum    | 25   | RSI 6 · MACD 6 · ADX 7 · Tekanan Pasaran 6       |
+| Smart Money | 25   | Bias struktur 10 · kedudukan vs paras 9 · zon 6  |
+| Corak Lilin | 5    | Corak 3 · bonus konfluens dengan paras 2         |
+| Berita      | 5    | Tiada acara impak tinggi berhampiran             |
+
+**Kenapa berat berubah dari v3.** Menjalankan enjin atas 1,800 bar memberi purata markah
+setiap baldi: Trend 27.6/40 · Momentum 12.2/20 · Smart Money 10.4/20 · **Corak Lilin 1.0/10**.
+Corak lilin memegang 10% skala untuk maklumat yang hampir tidak pernah wujud, jadi siling
+praktikal ialah ~90 dan ambang 70 sebenarnya menuntut 78% daripada markah yang boleh dicapai —
+punca sebenar "selalu WAIT". Markah dipindah ke baldi yang membawa maklumat setiap bar.
+Berita diturunkan kerana ia sudah menjadi gate keras; 10 markah mengira benda sama dua kali.
+Ambang masuk di-anchor semula 70 → 65 supaya penimbangan ini kekal **neutral-skala**.
 
 **Gate `NO TRADE`** (skor menjadi tidak relevan): timeframe bertentangan arah · data
 timeframe tidak lengkap · berita impak tinggi dalam zon bahaya · pasaran tutup ·
-volatiliti melonjak (ATR > 1.2% harga). Timeframe _neutral_ hanya mengurangkan
-markah — ia tidak menggate.
+volatiliti melonjak (ATR > 2.5× median terkini) · **kos (spread+komisen) > 25% daripada
+risiko** · **bajet kerugian harian habis** · **3 kalah berturut hari ini**. Timeframe
+_neutral_ hanya mengurangkan markah — ia tidak menggate.
 
-**Gate lembut `WAIT`**: harga dalam 0.5×ATR dari paras bertentangan → "tunggu breakout".
+**Gate lembut `WAIT`**: paras BERSTRUKTUR (≥2 sentuhan) bertentangan lebih dekat daripada
+1R → "tunggu breakout". Paras pada 1R–2R dibenarkan dengan amaran potong sasaran.
+
+**Arah**: enjin menilai **kedua-dua** arah dan memilih yang terbaik ([`skorSetupTerbaik`](js/scoring.js)).
+Sebelum ini ia meneka satu arah dahulu, jadi pullback di mana tekaan bercanggah dengan susunan
+EMA menghasilkan `NO TRADE` walaupun arah bertentangan ialah setup bersih — diukur, menilai
+kedua-duanya menurunkan `NO TRADE` daripada 25.6% ke 19.3%.
 
 Data hilang memberi **0 markah**, bukan separuh kredit — skor yang dibina atas
 ketidaktahuan tidak boleh dipercayai.
@@ -146,6 +167,41 @@ kedua-dua mod.
 > tidak dimodelkan** — pada scalp ia menguasai P&L, jadi kadar-menang backtest optimistik &
 > in-sample. Guna sebagai sokongan keputusan, bukan bot execution. Tempoh indikator
 > (EMA200/ATR14) diguna semula apa adanya, tidak dioptimum semula untuk M5.
+
+## Kos dagangan (spread & komisen)
+
+App memodelkan kos secara eksplisit ([`js/kos.js`](js/kos.js)). Ini penting kerana ia menentukan
+sama ada setup SL-rapat berbaloi langsung: pada scalp M5 dengan SL beberapa pip, spread 1 pip
+boleh menjadi **~30% daripada 1R**, dan sistem yang nampak positif pada kertas menjadi negatif
+di akaun sebenar.
+
+- Nilai lalai ialah **anggaran berhemat, bukan kadar broker anda** — betulkan di
+  **Kalkulator → 💸 Kos dagangan**.
+- **Rakam spread sebenar** (Kalkulator → 📏): broker menulis "spread _dari_ X pip" — itu kes
+  terbaik pada saat paling tenang. Baca spread langsung dari platform anda dan rakam; bacaan
+  ditandai mengikut **sesi**, dan app menggunakan median sesi semasa apabila menilai setup.
+  Sesi yang belum diukur jatuh ke bacaan **terburuk** anda, bukan yang terbaik — jangan
+  andaikan kes terbaik untuk keadaan yang anda tak pernah semak. Median digunakan supaya satu
+  bacaan tersalah taip tidak mencemarkan nombor.
+- Kos > 25% daripada risiko ialah **gate keras**; > 15% memberi amaran.
+- Backtest menolak kos daripada setiap dagangan, jadi expectancy yang dilaporkan ialah
+  expectancy **selepas** spread.
+
+## Adakah enjin ini benar-benar ada kelebihan?
+
+Tiga angka, dengan kekuatan bukti yang menaik — kesemuanya dipaparkan dalam app:
+
+1. **Backtest** (skrin Skor) — **in-sample**. Ambang & pemberat direka manusia lalu diuji atas
+   data yang sama. Optimistik secara sistematik.
+2. **Walk-forward** (skrin Skor) — ambang dipilih atas 70% awal sahaja, prestasi dilapor atas
+   30% akhir yang tidak pernah dilihat semasa pemilihan. Jika lajur uji runtuh, ambang itu
+   memuatkan bunyi bising. Mengecilkan bias; tidak menghapuskannya (pemberat masih direka manusia).
+3. **Log verdict langsung** (skrin Jurnal) — setiap `BUY`/`SELL` yang enjin keluarkan semasa
+   penggunaan sebenar direkod, kemudian diselesaikan terhadap harga yang tiba **selepasnya**.
+   Tiada penalaan boleh menipunya: rekod ditulis sebelum lilin seterusnya wujud. Ini satu-satunya
+   bukti **luar-sampel tulen**, dan ia mengukur enjin, bukan disiplin anda.
+
+Bandingkan ketiga-tiganya. Jika (1) jauh lebih cantik daripada (3), percayai (3).
 
 ## Had yang perlu diketahui (jujur)
 

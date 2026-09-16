@@ -1,5 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { skorSetup, gredDariSkor, arahDominan, jelaskan, arahTf } from "../js/scoring.js";
+import {
+  skorSetup,
+  skorSetupTerbaik,
+  gredDariSkor,
+  arahDominan,
+  jelaskan,
+  arahTf,
+} from "../js/scoring.js";
 
 // Ringkasan indikator "bullish kuat" untuk EURUSD.
 const bull = {
@@ -98,7 +105,7 @@ describe("struktur 100 mata", () => {
   it("jumlah maksimum semua baldi tepat 100", () => {
     const m = skorSetup(asasBuy).maks;
     expect(Object.values(m).reduce((a, b) => a + b, 0)).toBe(100);
-    expect(m).toEqual({ trend: 40, momentum: 20, smartMoney: 20, lilin: 10, berita: 10 });
+    expect(m).toEqual({ trend: 40, momentum: 25, smartMoney: 25, lilin: 5, berita: 5 });
   });
 });
 
@@ -114,10 +121,10 @@ describe("skorSetup — setup baik", () => {
   it("setiap baldi mencapai maksimumnya pada setup sempurna", () => {
     const r = skorSetup(asasBuy);
     expect(r.pecahan.trend).toBe(40); // 20 + 10 + 10
-    expect(r.pecahan.momentum).toBe(20); // RSI + MACD + ADX + tekanan penuh
-    expect(r.pecahan.smartMoney).toBe(20); // bias 8 + sokongan 7 + zon 5
-    expect(r.pecahan.berita).toBe(10);
-    expect(r.pecahan.lilin).toBeGreaterThan(5); // engulfing + konfluens sokongan
+    expect(r.pecahan.momentum).toBe(25); // RSI + MACD + ADX + tekanan penuh
+    expect(r.pecahan.smartMoney).toBe(25); // bias 10 + sokongan 9 + zon 6
+    expect(r.pecahan.berita).toBe(5);
+    expect(r.pecahan.lilin).toBeGreaterThan(2.5); // engulfing + konfluens sokongan
   });
 
   it("bearish selari → verdict SELL", () => {
@@ -230,7 +237,7 @@ describe("baldi individu", () => {
   it("smc menentang arah → kehilangan mata bias", () => {
     const selari = skorSetup(asasBuy).pecahan.smartMoney;
     const lawan = skorSetup({ ...asasBuy, smc: { bias: "bear" } }).pecahan.smartMoney;
-    expect(selari - lawan).toBe(8);
+    expect(selari - lawan).toBe(10);
   });
 
   it("corak lilin menentang arah → 0 markah lilin", () => {
@@ -241,7 +248,7 @@ describe("baldi individu", () => {
 
   it("acara impak sederhana berdekatan → separuh markah berita", () => {
     const r = skorSetup({ ...asasBuy, berita: { senarai: [], bahaya: false, amaran: true } });
-    expect(r.pecahan.berita).toBe(5);
+    expect(r.pecahan.berita).toBe(2.5);
     expect(r.gate.lulus).toBe(true); // amaran tidak menggate
   });
 });
@@ -341,5 +348,199 @@ describe("parametrize mod — tfLabel / bobotTrend / gate", () => {
     expect(r.verdict).toBe("WAIT");
     // Ambang tepat pada skor → masih cukup untuk BUY.
     expect(skorSetup({ ...asasBuy, ambangMasuk: skor }).verdict).toBe("BUY");
+  });
+});
+
+describe("gate kos — setup yang matematiknya kalah tidak boleh diluluskan", () => {
+  const kosGate = {
+    gate: true,
+    amaran: false,
+    kosR: 0.33,
+    sebab:
+      "Kos (spread+komisen 1.0 pip) ialah 33% daripada risiko — SL terlalu rapat untuk berbaloi.",
+  };
+  const kosAmaran = {
+    gate: false,
+    amaran: true,
+    kosR: 0.2,
+    sebab: "Kos 1.0 pip = 20% daripada risiko — jidar nipis.",
+  };
+
+  it("kos melebihi ambang → NO TRADE walaupun skor tinggi", () => {
+    const tanpaKos = skorSetup(asasBuy);
+    expect(tanpaKos.verdict).toBe("BUY"); // setup ini memang bagus...
+
+    const r = skorSetup({ ...asasBuy, kos: kosGate });
+    expect(r.verdict).toBe("NO TRADE"); // ...tetapi tidak selepas kos dikira
+    expect(r.gate.sebab.join(" ")).toContain("terlalu rapat");
+    // Skor tidak berubah — hanya kebenaran masuk yang ditarik.
+    expect(r.skor).toBe(tanpaKos.skor);
+  });
+
+  it("kos pada paras amaran → masih boleh dagang, tetapi disebut", () => {
+    const r = skorSetup({ ...asasBuy, kos: kosAmaran });
+    expect(r.gate.lulus).toBe(true);
+    expect(r.amaran.join(" ")).toContain("jidar nipis");
+  });
+
+  it("tiada maklumat kos → kelakuan tidak berubah", () => {
+    expect(skorSetup({ ...asasBuy, kos: null }).verdict).toBe("BUY");
+  });
+});
+
+describe("gate modal — had harian & kalah berturut", () => {
+  it("bajet risiko harian habis → NO TRADE", () => {
+    const r = skorSetup({
+      ...asasBuy,
+      risikoHarian: { melebihi: true, digunakan: 30, had: 30, baki: 0, peratus: 100 },
+    });
+    expect(r.verdict).toBe("NO TRADE");
+    expect(r.gate.sebab.join(" ")).toContain("Bajet risiko harian habis");
+  });
+
+  it("bajet masih ada → tiada gate", () => {
+    const r = skorSetup({
+      ...asasBuy,
+      risikoHarian: { melebihi: false, digunakan: 10, had: 30, baki: 20, peratus: 33 },
+    });
+    expect(r.gate.lulus).toBe(true);
+  });
+
+  it("3 kalah berturut hari ini → berhenti paksa", () => {
+    expect(skorSetup({ ...asasBuy, kalahBerturut: 2 }).verdict).toBe("BUY");
+    const r = skorSetup({ ...asasBuy, kalahBerturut: 3 });
+    expect(r.verdict).toBe("NO TRADE");
+    expect(r.gate.sebab.join(" ")).toContain("kalah berturut");
+  });
+});
+
+describe("skor teras — sepadan antara backtest & dagangan langsung", () => {
+  it("skor teras membuang sumbangan berita", () => {
+    const r = skorSetup(asasBuy); // senarai berita kosong → berita 10/10
+    expect(r.pecahan.berita).toBe(5);
+    expect(r.skorTeras).toBe(Math.round((r.skor - 5) * 10) / 10);
+    expect(r.maksTeras).toBe(95);
+  });
+
+  it("setup teknikal SAMA menghasilkan skor teras sama walau status berita berbeza", () => {
+    // Backtest tidak tahu kalendar sejarah → berita penuh.
+    const backtest = skorSetup(asasBuy);
+    // Dagangan langsung dengan acara impak tinggi berdekatan → berita separuh.
+    const langsung = skorSetup({
+      ...asasBuy,
+      berita: {
+        senarai: [{ nama: "NFP", impak: "tinggi", minit: 45, lalu: false }],
+        bahaya: false,
+        amaran: false,
+        seterusnya: { nama: "NFP", impak: "tinggi", minit: 45, lalu: false, mataWang: "USD" },
+      },
+    });
+    // Skor penuh berbeza (itulah punca pemetaan jalur cacat sebelum ini)...
+    expect(langsung.skor).toBeLessThan(backtest.skor);
+    // ...tetapi skor teras identik, jadi jalur kebarangkalian membandingkan benda sama.
+    expect(langsung.skorTeras).toBe(backtest.skorTeras);
+  });
+});
+
+describe("peraturan ruang 1R — menggantikan ambang 0.5×ATR sembarangan", () => {
+  // ATR 0.0009, slPengganda 1.5 → 1R = 0.00135. Harga 1.1.
+  const asas = { ...asasBuy, slPengganda: 1.5 };
+
+  it("paras berstruktur dalam 1R → WAIT dengan sebab konkrit", () => {
+    const r = skorSetup({
+      ...asas,
+      aras: {
+        sokongan: [{ harga: 1.095, sentuhan: 3 }],
+        rintangan: [{ harga: 1.1008, sentuhan: 4 }],
+      },
+    });
+    expect(r.verdict).toBe("WAIT");
+    expect(r.amaran.join(" ")).toContain("tiada ruang untuk 1R");
+  });
+
+  it("paras 1-SENTUHAN dalam 1R tidak menyekat — ayun terpencil bukan struktur", () => {
+    const r = skorSetup({
+      ...asas,
+      aras: {
+        sokongan: [{ harga: 1.095, sentuhan: 3 }],
+        rintangan: [{ harga: 1.1008, sentuhan: 1 }],
+      },
+    });
+    expect(r.verdict).not.toBe("WAIT");
+  });
+
+  it("ruang antara 1R dan 2R → boleh dagang, tetapi amaran potong sasaran", () => {
+    // Rintangan 1.1020 = 0.0020 jauh ≈ 1.48R
+    const r = skorSetup({
+      ...asas,
+      aras: {
+        sokongan: [{ harga: 1.095, sentuhan: 3 }],
+        rintangan: [{ harga: 1.102, sentuhan: 4 }],
+      },
+    });
+    expect(r.gate.lulus).toBe(true);
+    expect(r.verdict).not.toBe("WAIT");
+    expect(r.amaran.join(" ")).toContain("potong sasaran");
+  });
+
+  it("SL lebih lebar menjadikan paras yang sama terlalu dekat", () => {
+    const aras = {
+      sokongan: [{ harga: 1.095, sentuhan: 3 }],
+      rintangan: [{ harga: 1.102, sentuhan: 4 }],
+    };
+    // slPengganda 1.5 → 1R = 0.00135, ruang 0.0020 = 1.48R → boleh dagang.
+    expect(skorSetup({ ...asasBuy, aras, slPengganda: 1.5 }).verdict).not.toBe("WAIT");
+    // slPengganda 3.0 → 1R = 0.0027, ruang 0.0020 = 0.74R → tiada ruang.
+    expect(skorSetup({ ...asasBuy, aras, slPengganda: 3.0 }).verdict).toBe("WAIT");
+  });
+});
+
+describe("gate volatiliti relatif", () => {
+  it("ATR jauh melebihi median → NO TRADE, walaupun ATR% mutlak kecil", () => {
+    // ATR 0.0009 pada harga 1.1 = 0.08% — jauh di bawah mana-mana ambang mutlak.
+    const r = skorSetup({ ...asasBuy, atrMedian: 0.0003 }); // 3× median
+    expect(r.gate.lulus).toBe(false);
+    expect(r.gate.sebab.join(" ")).toContain("median terkini");
+  });
+
+  it("ATR berhampiran median → lulus", () => {
+    expect(skorSetup({ ...asasBuy, atrMedian: 0.0008 }).gate.lulus).toBe(true);
+  });
+
+  it("tanpa median, jatuh balik ke ambang mutlak lama", () => {
+    const indBergelora = { ...bull, atr: 0.0066 }; // 0.6% dari 1.1
+    expect(skorSetup({ ...asasBuy, ind1h: indBergelora, atrMelonjak: 0.004 }).gate.lulus).toBe(
+      false
+    );
+  });
+});
+
+describe("skorSetupTerbaik — nilai kedua-dua arah", () => {
+  it("memilih arah yang lulus gate, bukan arah yang diteka", () => {
+    // Semua timeframe BEARISH, tetapi undian momentum condong ke Buy.
+    const input = {
+      ...asasBuy,
+      arah: undefined,
+      ind1h: bear,
+      ind4h: bear,
+      indD: bear,
+      smc: { bias: "bear" },
+      kekuatan: { EUR: 2, USD: 9 },
+      aras: { sokongan: [{ harga: 1.09, sentuhan: 3 }], rintangan: [{ harga: 1.12, sentuhan: 3 }] },
+    };
+    const r = skorSetupTerbaik(input);
+    expect(r.arah).toBe("Sell");
+    expect(r.gate.lulus).toBe(true);
+  });
+
+  it("menghormati arah yang ditetapkan pengguna", () => {
+    const r = skorSetupTerbaik({ ...asasBuy, arah: "Sell" });
+    expect(r.arah).toBe("Sell");
+  });
+
+  it("kedua-dua arah tersekat → pulangkan yang halangannya paling sedikit", () => {
+    const r = skorSetupTerbaik({ ...asasBuy, arah: undefined, pasaranTutup: true });
+    expect(r.gate.lulus).toBe(false);
+    expect(r.gate.sebab.join(" ")).toContain("Pasaran tutup");
   });
 });

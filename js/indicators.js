@@ -97,6 +97,26 @@ export function atr(candles, period = 14) {
   return out;
 }
 
+// Median ATR bagi `lookback` bar terakhir — asas gate volatiliti RELATIF.
+//
+// Ambang volatiliti mutlak (atr/harga > 1.2%) tidak berfungsi merentas pasangan dan
+// timeframe: ATR% 1J purata ialah ~0.09%, jadi ambang itu tidak pernah menyala, dan
+// nilai yang betul untuk EURUSD M5 berbeza mengikut magnitud daripada emas Harian.
+// Median memberi asas yang berskala sendiri — "2.5× lebih bergelora daripada biasa
+// kebelakangan ini" bermakna benda sama di mana-mana.
+//
+// Median, bukan purata: satu lilin berita boleh menggandakan purata dan dengan itu
+// menyembunyikan lonjakan yang sepatutnya dikesan.
+export function atrMedian(candles, period = 14, lookback = 100) {
+  const siri = atr(candles, period);
+  if (!siri) return null;
+  const nilai = siri.filter((v) => v != null && v > 0).slice(-lookback);
+  if (!nilai.length) return null;
+  const isih = [...nilai].sort((a, b) => a - b);
+  const tengah = Math.floor(isih.length / 2);
+  return isih.length % 2 ? isih[tengah] : (isih[tengah - 1] + isih[tengah]) / 2;
+}
+
 // MACD = EMA(fast) − EMA(slow); signal = EMA(macd); hist = macd − signal.
 export function macd(closes, fast = 12, slow = 26, signalPeriod = 9) {
   const n = Array.isArray(closes) ? closes.length : 0;

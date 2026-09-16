@@ -28,6 +28,10 @@ function* jalan(candles, opts) {
     atrPeriod = 14,
     pairId = "EURUSD",
     mula = 50,
+    // Kos pusing-balik (spread + komisen) dalam UNIT HARGA, bukan pip — backtest
+    // tidak tahu saiz pip pasangan. 0 = model tanpa kos (tidak realistik; pemanggil
+    // patut hantar nilai sebenar dari kos.js).
+    kosHarga = 0,
     // Hadkan tetingkap yang dilihat skorFn. Tanpa ini setiap bar menyalin
     // keseluruhan sejarah → O(n²) dan membekukan UI pada 5000 lilin.
     // 400 bar sudah memadai: EMA200 & ATR14 lama menumpu sebelum itu.
@@ -95,6 +99,10 @@ function* jalan(candles, opts) {
     }
     if (!hasil) return; // tiada resolusi sehingga hujung data → berhenti
 
+    // Kos dalam istilah R. Ia dibayar dua kali: menolak keuntungan DAN menambah
+    // kerugian, sebab spread perlu diatasi untuk sampai TP dan mempercepat SL.
+    const kosR = jarakSL > 0 ? kosHarga / jarakSL : 0;
+
     yield {
       kemajuan: i / n,
       dagangan: {
@@ -106,9 +114,12 @@ function* jalan(candles, opts) {
         rr,
         hasil,
         ts: keTs(candles[i].t),
-        rSebenar: hasil === "win" ? rr : -1,
+        rSebenar: hasil === "win" ? rr - kosR : -1 - kosR,
+        kosR,
         // Skor semasa masuk — dipakai kebarangkalian.js untuk menjalurkan keputusan.
         skor: sig && typeof sig.skor === "number" ? sig.skor : null,
+        skorTeras: sig && typeof sig.skorTeras === "number" ? sig.skorTeras : null,
+        skorTerasNorm: sig && typeof sig.skorTerasNorm === "number" ? sig.skorTerasNorm : null,
       },
     };
     i = keluarI + 1; // masuk semula selepas dagangan sebelumnya ditutup

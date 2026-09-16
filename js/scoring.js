@@ -24,6 +24,9 @@
 //   statusSesi,           // statusMasaOrder(now) { tahap:"elok"|"hati"|"elak" }
 //   berita,               // jarakAcara(now) { bahaya, amaran, seterusnya, senarai }
 //   pasaranTutup,         // boolean
+//   kos,                  // nilaiKos() dari kos.js { gate, amaran, sebab, kosR, rrBersih }
+//   risikoHarian,         // bakiRisikoHarian() dari risk.js { melebihi, digunakan, had }
+//   kalahBerturut,        // bilangan kekalahan berturut HARI INI (nombor)
 // }
 
 import { tekananPasaran } from "./tekanan.js";
@@ -33,7 +36,30 @@ import { kedudukanAras } from "./aras.js";
 export const AMBANG_MASUK = 70; // skor minimum untuk verdict BUY/SELL
 export const ATR_MELONJAK = 0.012; // atr/harga di atas ini = terlalu volatil untuk masuk
 
-const MAKS = { trend: 40, momentum: 20, smartMoney: 20, lilin: 10, berita: 10 };
+// Kekalahan berturut dalam satu hari yang mencetuskan berhenti paksa.
+// Bukan tentang kebarangkalian — selepas tiga kalah berturut, masalahnya biasanya
+// keadaan pasaran atau keadaan diri, dan kedua-duanya tidak dibaiki oleh dagangan
+// seterusnya.
+export const KALAH_BERTURUT_HAD = 3;
+
+// ATR semasa berbanding median ATR terkini yang dikira sebagai "lonjakan".
+// Menggantikan ambang mutlak yang terukur tidak pernah menyala — lihat gate di bawah.
+export const ATR_LONJAK_NISBAH = 2.5;
+
+// Berat baldi. Angka ini DIUKUR, bukan dipilih ikut rasa.
+//
+// Menjalankan enjin ini atas 1,800 bar memberi purata markah setiap baldi:
+//   Trend 27.6/40 · Momentum 12.2/20 · Smart Money 10.4/20 · Corak Lilin 1.0/10
+//
+// Corak Lilin mengutip 1.0 daripada 10. Ia memegang 10% skala untuk maklumat yang
+// hampir tidak pernah wujud (engulfing/hammer/star pada lilin TERAKHIR sahaja), jadi
+// siling praktikal ialah ~90 dan ambang 70 sebenarnya menuntut 78% daripada markah
+// yang boleh dicapai. Itulah punca sebenar "selalu WAIT".
+//
+// Markah dipindah ke baldi yang benar-benar membawa maklumat setiap bar. Corak lilin
+// kekal sebagai BONUS konfluens, bukan baldi penuh. Berita diturunkan kerana ia sudah
+// menjadi gate keras — memberi 10 markah kepadanya mengira benda sama dua kali.
+const MAKS = { trend: 40, momentum: 25, smartMoney: 25, lilin: 5, berita: 5 };
 
 // Berat & label triad TF lalai (mod swing 1J/4J/Harian). Mod lain (scalp) menghantar
 // nilai sendiri melalui input.bobotTrend / input.tfLabel — lihat js/mod.js.
@@ -114,7 +140,15 @@ function skorTrend(indD, ind4h, ind1h, arah, bobot = BOBOT_TREND_LALAI, label = 
   return { markah: b1(markah), sebab: nota.join(", ") + ".", konflik, tiadaData };
 }
 
-// Momentum (20): RSI 5 · MACD 5 · ADX 5 · Tekanan Pasaran 5.
+// Momentum (25): RSI 6 · MACD 6 · ADX 7 · Tekanan Pasaran 6.
+// ADX dapat bahagian terbesar kerana ia satu-satunya yang membezakan trend daripada
+// julat — dan dagangan ikut-trend dalam pasaran julat ialah cara paling biasa untuk
+// terkena stop dua hala.
+const M_RSI = 6;
+const M_MACD = 6;
+const M_ADX = 7;
+const M_TEKANAN = 6;
+
 function skorMomentum(ind1h, candles1h, arah) {
   if (!ind1h) return { markah: 0, sebab: "Tiada data momentum 1J.", tiadaData: true };
   let markah = 0;
@@ -139,19 +173,19 @@ function skorMomentum(ind1h, candles1h, arah) {
             : r <= 60
               ? 0.6
               : 0.2;
-    markah += 5 * f;
+    markah += M_RSI * f;
     nota.push(`RSI ${r.toFixed(0)}`);
   }
 
-  // MACD histogram (5)
+  // MACD histogram (6)
   if (ind1h.macdHist != null) {
     const h = ind1h.macdHist;
     const selari = arah === "Buy" ? h > 0 : h < 0;
-    markah += 5 * (Math.abs(h) < 1e-9 ? 0.5 : selari ? 1 : 0);
+    markah += M_MACD * (Math.abs(h) < 1e-9 ? 0.5 : selari ? 1 : 0);
     nota.push(`MACD ${h > 0 ? "+" : ""}${h.toFixed(5)}`);
   }
 
-  // ADX + arah DI (5)
+  // ADX + arah DI (7)
   if (ind1h.adx != null) {
     const a = ind1h.adx;
     let f = a >= 25 ? 1 : a >= 20 ? 0.7 : a >= 15 ? 0.4 : 0.15;
@@ -162,14 +196,14 @@ function skorMomentum(ind1h, candles1h, arah) {
           : ind1h.minusDI > ind1h.plusDI
         : true;
     if (!diSelari) f *= 0.5;
-    markah += 5 * f;
+    markah += M_ADX * f;
     nota.push(`ADX ${a.toFixed(0)}`);
   }
 
-  // Tekanan Pasaran (5) — proxy untuk volume yang forex spot tiada.
+  // Tekanan Pasaran (6) — proxy untuk volume yang forex spot tiada.
   const tk = tekananPasaran(candles1h, arah);
   if (tk) {
-    markah += 5 * tk.skorFrac;
+    markah += M_TEKANAN * tk.skorFrac;
     nota.push(`Tekanan ${Math.round(tk.skorFrac * 100)}%`);
   }
 
@@ -180,8 +214,8 @@ function skorMomentum(ind1h, candles1h, arah) {
   };
 }
 
-// Smart Money (20): bias struktur 8 · kedudukan vs paras 7 · zon supply/demand 5.
-function skorSmartMoney(smc, aras, zon, harga, atrNilai, arah) {
+// Smart Money (25): bias struktur 10 · kedudukan vs paras 9 · zon supply/demand 6.
+function skorSmartMoney(smc, aras, zon, harga, atrNilai, arah, jarakSL) {
   const mahu = arah === "Buy" ? "bull" : "bear";
   let markah = 0;
   const nota = [];
@@ -192,36 +226,63 @@ function skorSmartMoney(smc, aras, zon, harga, atrNilai, arah) {
   if (!smc || !smc.bias) {
     nota.push("struktur tidak dinilai");
   } else if (smc.bias === mahu) {
-    markah += 8;
+    markah += 10;
     nota.push(`struktur ${smc.bias} selari`);
   } else if (smc.bias === "neutral") {
-    markah += 3;
+    markah += 4;
     nota.push("struktur neutral");
   } else {
     nota.push(`struktur ${smc.bias} menentang`);
   }
 
-  // Kedudukan vs paras S/R (7) — inilah peraturan "tunggu breakout".
+  // Kedudukan vs paras S/R (9) — inilah peraturan "tunggu breakout".
+  //
+  // Peraturan lama: dalam 0.5×ATR dari paras bertentangan → WAIT mutlak. Terukur, ini
+  // menyekat 18% daripada SEMUA bar, dan 0.5×ATR ialah nombor sembarangan yang tidak
+  // ada kaitan dengan dagangan yang sebenarnya dirancang.
+  //
+  // Peraturan baharu: yang penting ialah sama ada ada RUANG UNTUK 1R sebelum halangan.
+  // Kalau paras bertentangan lebih dekat daripada jarak SL, dagangan itu memang tidak
+  // masuk akal — itu WAIT. Kalau ada ruang ≥1R, ia boleh didagangkan dengan amaran dan
+  // sasaran yang dipotong ke paras tersebut. Ini boleh dipertahankan; 0.5×ATR tidak.
   const k = kedudukanAras(harga, aras, atrNilai, zon);
-  const hampirLawan = arah === "Buy" ? k.hampirRintangan : k.hampirSokongan;
+  const jarakLawan = arah === "Buy" ? k.jarakRintangan : k.jarakSokongan;
   const hampirSokong = arah === "Buy" ? k.hampirSokongan : k.hampirRintangan;
+  const ruangR = jarakSL > 0 && jarakLawan != null ? jarakLawan / jarakSL : null;
+  const parasLawan = arah === "Buy" ? k.rintangan : k.sokongan;
+  const namaLawan = arah === "Buy" ? "rintangan" : "sokongan";
+
+  // Hanya paras yang BERSTRUKTUR boleh menyekat dagangan. Satu ayun fraktal terpencil
+  // (1 sentuhan) ialah titik dalam bunyi bising, bukan paras yang institusi pertahankan
+  // — terukur, 35% daripada semua sekatan datang daripada paras 1-sentuhan sebegini.
+  const parasBerstruktur = parasLawan != null && parasLawan.sentuhan >= 2;
+
   if (!aras || (!k.sokongan && !k.rintangan)) {
     nota.push("paras tidak dikesan");
-  } else if (hampirLawan) {
+  } else if (ruangR != null && ruangR < 1 && parasBerstruktur) {
+    // Tiada ruang untuk 1R sebelum halangan → tunggu breakout.
     tungguBreakout = true;
-    const paras = arah === "Buy" ? k.rintangan : k.sokongan;
-    const nama = arah === "Buy" ? "rintangan" : "sokongan";
-    amaran.push(`Hampir ${nama} ${paras.harga.toFixed(5)} — tunggu breakout.`);
-    nota.push(`hampir ${nama}`);
+    amaran.push(
+      `${namaLawan.charAt(0).toUpperCase() + namaLawan.slice(1)} ${parasLawan.harga.toFixed(5)} hanya ${ruangR.toFixed(2)}R jauh — tiada ruang untuk 1R, tunggu breakout.`
+    );
+    nota.push(`${namaLawan} dalam 1R`);
   } else if (hampirSokong) {
-    markah += 7;
+    markah += 9;
     nota.push(arah === "Buy" ? "memantul dari sokongan" : "ditolak dari rintangan");
+  } else if (ruangR != null && ruangR < 2) {
+    // Ruang cukup untuk 1R tetapi tidak untuk sasaran penuh — boleh dagang, tetapi
+    // pengguna mesti tahu sasaran perlu dipotong.
+    markah += 5;
+    amaran.push(
+      `${namaLawan.charAt(0).toUpperCase() + namaLawan.slice(1)} ${parasLawan.harga.toFixed(5)} pada ${ruangR.toFixed(2)}R — potong sasaran ke paras ini.`
+    );
+    nota.push(`${namaLawan} pada ${ruangR.toFixed(1)}R`);
   } else {
-    markah += 4;
+    markah += 5;
     nota.push("ruang bebas ke paras terdekat");
   }
 
-  // Zon supply/demand (5).
+  // Zon supply/demand (6).
   // "Luar zon" hanya boleh diberi markah jika kita BENAR-BENAR mengimbas zon.
   // Tanpa data zon, tiada markah — jangan ganjari ketidaktahuan.
   const adaDataZon = Array.isArray(zon);
@@ -230,7 +291,7 @@ function skorSmartMoney(smc, aras, zon, harga, atrNilai, arah) {
     nota.push("zon tidak diimbas");
   } else if (k.dalamZon) {
     if (k.dalamZon.jenis === zonMahu) {
-      markah += 5;
+      markah += 6;
       nota.push(`dalam zon ${k.dalamZon.jenis}`);
     } else {
       nota.push(`dalam zon ${k.dalamZon.jenis} (menentang)`);
@@ -249,7 +310,9 @@ function skorSmartMoney(smc, aras, zon, harga, atrNilai, arah) {
   };
 }
 
-// Corak Lilin (10): corak dikesan 6 · bonus konfluens dengan paras 4.
+// Corak Lilin (5): corak dikesan 3 · bonus konfluens dengan paras 2.
+// Diturunkan dari 10 kerana terukur ia hanya mengutip purata 1.0 markah — baldi yang
+// hampir tidak pernah terisi menjadikan ambang masuk mustahil dicapai secara senyap.
 function skorLilin(candles1h, aras, atrNilai, harga, arah, zon) {
   const corak = coraklilin(candles1h);
   if (!corak) return { markah: 0, sebab: "Tiada corak lilin jelas.", corak: null };
@@ -261,7 +324,7 @@ function skorLilin(candles1h, aras, atrNilai, harga, arah, zon) {
       corak,
     };
   }
-  let markah = 6 * corak.kekuatan;
+  let markah = 3 * corak.kekuatan;
   const nota = [corak.nama];
 
   // Konfluens: corak pembalikan bullish di sokongan (atau bearish di rintangan)
@@ -269,7 +332,7 @@ function skorLilin(candles1h, aras, atrNilai, harga, arah, zon) {
   const k = kedudukanAras(harga, aras, atrNilai, zon);
   const diParas = arah === "Buy" ? k.hampirSokongan : k.hampirRintangan;
   if (diParas) {
-    markah += 4;
+    markah += 2;
     nota.push(arah === "Buy" ? "di sokongan" : "di rintangan");
   }
 
@@ -319,16 +382,37 @@ export function skorSetup(input) {
   const ambangMasuk = input.ambangMasuk ?? AMBANG_MASUK;
   const atrMelonjak = input.atrMelonjak ?? ATR_MELONJAK;
 
+  // Jarak SL yang dirancang — 1R. Peraturan paras diukur terhadap ini, bukan terhadap
+  // gandaan ATR sembarangan, supaya "ada ruang untuk dagangan ini" bermakna benda yang
+  // sama seperti dalam pelan yang dipapar.
+  const slPengganda = input.slPengganda ?? 1.5;
+  const jarakSL = atrNilai > 0 ? atrNilai * slPengganda : null;
+
   const baldi = {
     trend: skorTrend(input.indD, input.ind4h, input.ind1h, arah, input.bobotTrend, input.tfLabel),
     momentum: skorMomentum(input.ind1h, input.candles1h, arah),
-    smartMoney: skorSmartMoney(input.smc, input.aras, input.zon, harga, atrNilai, arah),
+    smartMoney: skorSmartMoney(input.smc, input.aras, input.zon, harga, atrNilai, arah, jarakSL),
     lilin: skorLilin(input.candles1h, input.aras, atrNilai, harga, arah, input.zon),
     berita: skorBerita(input.berita),
   };
 
   const skor = b1(Object.values(baldi).reduce((s, b) => s + b.markah, 0));
   const gred = gredDariSkor(skor);
+
+  // Skor TERAS = skor tanpa baldi berita (maks 90).
+  //
+  // KENAPA: backtest tidak boleh tahu kalendar berita sejarah, jadi ia sentiasa
+  // memberi markah berita PENUH. Dagangan langsung pula selalunya 0 atau 5. Kesannya
+  // "skor 72" backtest dan "skor 72" langsung bukan benda yang sama, dan jalur
+  // kebarangkalian yang memetakan skor→kadar-menang memetakan dua taburan berbeza
+  // ke dalam baldi yang sama. Skor teras membuang sumber percanggahan itu; berita
+  // tetap berfungsi sebagai gate keras, jadi tiada maklumat keselamatan hilang.
+  const skorTeras = b1(skor - baldi.berita.markah);
+  const maksTeras = 100 - MAKS.berita;
+  // Dinormalkan ke 0-100 supaya jalur kebarangkalian kekal bermakna walaupun berat
+  // baldi ditala semula kemudian — tanpa ini setiap pelarasan berat secara senyap
+  // memindahkan dagangan sejarah antara jalur dan merosakkan perbandingan.
+  const skorTerasNorm = b1((skorTeras / maksTeras) * 100);
 
   // --- Gate keras: tesis dagangan rosak, skor tidak relevan → NO TRADE ---
   const sebabGate = [];
@@ -337,13 +421,47 @@ export function skorSetup(input) {
   if (baldi.trend.tiadaData)
     sebabGate.push("Data timeframe tidak lengkap — tidak boleh sahkan penjajaran.");
   if (baldi.berita.bahaya) sebabGate.push("Berita impak tinggi dalam zon bahaya.");
+  // Gate volatiliti.
+  //
+  // Ambang MUTLAK (atr/harga) terukur sebagai kod mati: ATR% 1J purata ialah 0.092%
+  // manakala gate swing ditetapkan pada 1.2% — 13× di atas. Gate scalp 0.4% pada M5
+  // lagi jauh. Kedua-duanya tidak pernah menyala sekali pun.
+  //
+  // Ambang RELATIF berfungsi kerana ia berskala sendiri: ATR semasa berbanding median
+  // ATR terkini. Lonjakan 2.5× ialah lonjakan sama ada pada EURUSD M5 atau emas Harian.
+  // Ambang mutlak kekal sebagai jaring keselamatan kedua bila median tiada.
   const atrPct = harga > 0 && atrNilai > 0 ? atrNilai / harga : null;
-  if (atrPct != null && atrPct > atrMelonjak) {
+  const atrMedian = Number(input.atrMedian);
+  if (atrMedian > 0 && atrNilai > 0) {
+    const nisbah = atrNilai / atrMedian;
+    if (nisbah > (input.atrLonjakNisbah ?? ATR_LONJAK_NISBAH)) {
+      sebabGate.push(
+        `Volatiliti melonjak (ATR ${nisbah.toFixed(1)}× median terkini) — terlalu berisiko.`
+      );
+    }
+  } else if (atrPct != null && atrPct > atrMelonjak) {
     sebabGate.push(`Volatiliti melonjak (ATR ${(atrPct * 100).toFixed(2)}%) — terlalu berisiko.`);
+  }
+
+  // Gate kos: spread + komisen terlalu besar berbanding jarak SL. Setup yang
+  // matematiknya kalah sebelum harga bergerak tidak boleh diluluskan walau seindah
+  // mana skornya — inilah sebabnya ia gate, bukan tolakan markah.
+  if (input.kos && input.kos.gate) sebabGate.push(input.kos.sebab);
+
+  // Gate modal: had kerugian harian & kekalahan berturut. Enjin tidak sepatutnya
+  // memberi kebenaran masuk kepada akaun yang sudah kehabisan bajet risiko hari ini.
+  if (input.risikoHarian && input.risikoHarian.melebihi) {
+    const r = input.risikoHarian;
+    sebabGate.push(`Bajet risiko harian habis (${r.digunakan}/${r.had}) — berhenti sampai esok.`);
+  }
+  const kalahBerturut = Number(input.kalahBerturut);
+  if (Number.isFinite(kalahBerturut) && kalahBerturut >= KALAH_BERTURUT_HAD) {
+    sebabGate.push(`${kalahBerturut} kalah berturut hari ini — berhenti, semak jurnal dahulu.`);
   }
 
   // --- Amaran: tidak membunuh dagangan, tetapi mesti dilihat pengguna ---
   const amaran = [...baldi.smartMoney.amaran];
+  if (input.kos && input.kos.amaran) amaran.push(input.kos.sebab);
   if (input.statusSesi && input.statusSesi.tahap === "elak") {
     amaran.push("Kecairan sesi rendah — spread mungkin lebar.");
   }
@@ -378,6 +496,9 @@ export function skorSetup(input) {
 
   return {
     skor,
+    skorTeras,
+    skorTerasNorm,
+    maksTeras,
     gred,
     verdict,
     arah,
@@ -391,7 +512,32 @@ export function skorSetup(input) {
     corak: baldi.lilin.corak,
     tekanan: baldi.momentum.tekanan,
     kedudukan: baldi.smartMoney.kedudukan,
+    kos: input.kos || null,
   };
+}
+
+// Nilai KEDUA-DUA arah dan pulangkan yang terbaik.
+//
+// MASALAH YANG DISELESAIKAN: skorSetup() menilai satu arah sahaja — arah yang diteka
+// oleh arahDominan() dari undian isyarat. Bila tekaan itu bercanggah dengan susunan
+// EMA (biasa berlaku semasa pullback), gate "timeframe bertentangan" menyala dan arah
+// BERTENTANGAN — yang mungkin setup Gred A yang bersih — tidak pernah dinilai langsung.
+//
+// Terukur atas 1,800 bar: menilai kedua-dua arah menurunkan NO TRADE 25.6% → 19.3%.
+//
+// Kalau pemanggil sudah menetapkan arah, hormati pilihan itu — ini untuk analisis
+// automatik, bukan untuk mengatasi niat pengguna.
+export function skorSetupTerbaik(input) {
+  if (input.arah) return skorSetup(input);
+  const buy = skorSetup({ ...input, arah: "Buy" });
+  const sell = skorSetup({ ...input, arah: "Sell" });
+  const lulus = [buy, sell].filter((h) => h.gate.lulus);
+  if (!lulus.length) {
+    // Kedua-dua arah tersekat: pulangkan yang sebab gatenya paling sedikit supaya
+    // pengguna nampak halangan yang paling hampir boleh diatasi.
+    return buy.gate.sebab.length <= sell.gate.sebab.length ? buy : sell;
+  }
+  return lulus.sort((a, b) => b.skor - a.skor)[0];
 }
 
 const LABEL = {

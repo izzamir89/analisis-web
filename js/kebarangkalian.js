@@ -14,8 +14,17 @@
 
 import { bacaJSON, simpanJSON } from "./store.js";
 
-const KUNCI = "bt_jalur";
+// v2: kunci per-MOD, jalur atas SKOR TERAS (tanpa berita, maks 90).
+// Snapshot v1 sengaja tidak dimigrasi — ia dikumpul di bawah takrifan jalur yang
+// berbeza DAN tercemar oleh dua pepijat (mod bercampur, sampel menggelembung), jadi
+// membawanya ke hadapan bermakna membawa nombor yang salah ke hadapan.
+const KUNCI = "bt_jalur_v2";
+
+// Jalur atas skor teras TERNORMAL (0-100). Normalisasi bermakna jalur ini kekal
+// bermakna walaupun berat baldi ditala semula kemudian — tanpanya setiap pelarasan
+// berat secara senyap memindahkan dagangan sejarah antara jalur.
 export const JALUR = [
+  [60, 69],
   [70, 79],
   [80, 89],
   [90, 100],
@@ -29,14 +38,22 @@ export function namaJalur(skor) {
   return null;
 }
 
-// Kumpulkan dagangan backtest ikut jalur skor. Tulen.
-// Dagangan tanpa `skor` atau di luar semua jalur diabaikan.
+// Kumpulkan dagangan backtest ikut jalur skor TERAS. Tulen.
+// Dagangan tanpa skor atau di luar semua jalur diabaikan.
 export function kumpulJalur(trades) {
   const keluar = {};
   for (const [bawah, atas] of JALUR) keluar[`${bawah}-${atas}`] = { n: 0, menang: 0 };
   for (const t of Array.isArray(trades) ? trades : []) {
-    if (!t || typeof t.skor !== "number") continue;
-    const nama = namaJalur(t.skor);
+    if (!t) continue;
+    // Utamakan skor teras TERNORMAL; jatuh balik ke teras mentah, kemudian skor penuh.
+    const nilai =
+      typeof t.skorTerasNorm === "number"
+        ? t.skorTerasNorm
+        : typeof t.skorTeras === "number"
+          ? t.skorTeras
+          : t.skor;
+    if (typeof nilai !== "number") continue;
+    const nama = namaJalur(nilai);
     if (!nama) continue;
     keluar[nama].n += 1;
     if (t.hasil === "win") keluar[nama].menang += 1;
@@ -78,14 +95,29 @@ export function kadarWilson(menang, n) {
 }
 
 // --- Storan (I/O) ---
-// Dikunci "{pairId}:{tsLilinTerakhir}" supaya menjalankan backtest berulang kali
-// pada data yang SAMA menggantikan, bukan menambah. Tanpa ini pengguna boleh
-// menggelembungkan saiz sampel sendiri hanya dengan menekan butang berkali-kali —
-// dan saiz sampel ialah satu-satunya sebab angka ini boleh dipercayai.
+//
+// Dikunci "{modId}:{pairId}" — DUA pembetulan berbanding v1:
+//
+//  1. `modId` dalam kunci, dan agregat ditapis mengikutnya. Sebelum ini dagangan
+//     scalp M5 dan swing Harian jatuh ke dalam kolam yang sama, jadi "kadar menang
+//     62%" pada skrin Swing EURUSD boleh sebenarnya berasal dari Scalp XAUUSD.
+//
+//  2. Cap masa data DIBUANG dari kunci. Dalam v1 kunci ialah "{pair}:{tsLilinAkhir}",
+//     jadi menjalankan backtest semula esok mencipta snapshot BAHARU walaupun 99%
+//     dagangannya adalah dagangan sejarah yang sama. Backtest harian selama sebulan
+//     menggelembungkan n ~30× dengan sampel yang hampir sepenuhnya bertindih, dan
+//     selang Wilson — satu-satunya sebab angka ini boleh dipercayai — menjadi
+//     palsu-sempit. Sekarang satu pasangan setiap mod menyumbang tepat satu
+//     snapshot, sentiasa yang terkini.
 
-export function simpanSnapshot(pairId, tsData, jalur) {
-  const semua = bacaJSON(KUNCI, {});
-  semua[`${pairId}:${tsData}`] = jalur;
+export function simpanSnapshot(modId, pairId, jalur, meta = {}) {
+  const semua = bacaSemuaSnapshot();
+  semua[`${modId}:${pairId}`] = {
+    jalur,
+    tsData: meta.tsData ?? null,
+    bilLilin: meta.bilLilin ?? null,
+    disimpan: Date.now(),
+  };
   simpanJSON(KUNCI, semua);
 }
 
@@ -98,18 +130,35 @@ export function padamSnapshot() {
   simpanJSON(KUNCI, {});
 }
 
-// Agregat merentas semua snapshot tersimpan.
-export function agregat() {
-  return gabungSnapshot(Object.values(bacaSemuaSnapshot()));
+// Agregat merentas snapshot bagi SATU mod. Tanpa modId, gabung semua (paparan sahaja).
+export function agregat(modId = null) {
+  const semua = bacaSemuaSnapshot();
+  const dipilih = Object.entries(semua)
+    .filter(([kunci]) => modId == null || kunci.startsWith(`${modId}:`))
+    .map(([, v]) => (v && v.jalur ? v.jalur : v));
+  return gabungSnapshot(dipilih);
 }
 
-// Statistik untuk satu skor tertentu — inilah yang dipaparkan dashboard.
+// Pasangan yang menyumbang kepada agregat satu mod — untuk paparan asal-usul.
+export function sumberJalur(modId = null) {
+  return Object.entries(bacaSemuaSnapshot())
+    .filter(([kunci]) => modId == null || kunci.startsWith(`${modId}:`))
+    .map(([kunci, v]) => ({
+      pairId: kunci.split(":")[1] || kunci,
+      tsData: v && v.tsData != null ? v.tsData : null,
+      bilLilin: v && v.bilLilin != null ? v.bilLilin : null,
+    }));
+}
+
+// Statistik untuk satu skor TERAS tertentu — inilah yang dipaparkan dashboard.
 // Pulang { cukup:false } bila sampel di bawah MIN_SAMPEL: lebih baik berkata
 // "tidak tahu" daripada memberi peratusan yang tidak boleh dipertahankan.
-export function bacaJalur(skor) {
-  const nama = namaJalur(skor);
-  if (!nama) return { nama: null, cukup: false, n: 0, menang: 0, min: MIN_SAMPEL };
-  const a = agregat()[nama] || { n: 0, menang: 0 };
+export function bacaJalur(skorTeras, modId = null) {
+  const nama = namaJalur(skorTeras);
+  if (!nama) {
+    return { nama: null, cukup: false, n: 0, menang: 0, min: MIN_SAMPEL, pasangan: [] };
+  }
+  const a = agregat(modId)[nama] || { n: 0, menang: 0 };
   const w = kadarWilson(a.menang, a.n);
   return {
     nama,
@@ -120,5 +169,6 @@ export function bacaJalur(skor) {
     kadar: w.kadar,
     bawah: w.bawah,
     atas: w.atas,
+    pasangan: sumberJalur(modId).map((s) => s.pairId),
   };
 }

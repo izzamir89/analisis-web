@@ -15,6 +15,7 @@ import { renderChecklist, hentiChecklist } from "./checklist.js";
 import { renderJurnal } from "./journal.js";
 import { bacaAcara, simpanAcara, padamAcara, jarakAcara } from "./news.js";
 import { renderDashboard } from "./dashboard.js";
+import { renderScanner } from "./scanner.js";
 import { escapeHtml } from "./store.js";
 
 const app = document.getElementById("app");
@@ -355,6 +356,14 @@ function skrinScalp(pairId) {
   renderDashboard(app.querySelector(".padded"), p.id, "scalp");
 }
 
+// Skrin Scan — nilaikan semua pasangan sekali jalan menggunakan enjin yang sama.
+function skrinScan(modId) {
+  const m = modId === "scalp" ? "scalp" : "swing";
+  tajukEl.textContent = `Imbas Pasangan (${m === "scalp" ? "Scalp" : "Swing"})`;
+  app.innerHTML = `<div class="padded"></div>`;
+  renderScanner(app.querySelector(".padded"), m);
+}
+
 function skrinKalkulator(awal) {
   tajukEl.textContent = "Kalkulator Entry / SL / TP";
   app.innerHTML = `<div class="padded"></div>`;
@@ -394,6 +403,10 @@ function route() {
     case "scalp":
       skrinScalp(arg);
       setActiveNav("scalp");
+      break;
+    case "scan":
+      skrinScan(arg);
+      setActiveNav("scan");
       break;
     case "chart":
       skrinCarta(arg);
