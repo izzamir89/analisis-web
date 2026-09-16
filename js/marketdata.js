@@ -149,15 +149,37 @@ function catatPanggilan(now) {
   });
 }
 
+// ---- Throttle (I/O) ----
+
+function tunggu(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Ms baki sehingga tetingkap kiraan-seminit reset, + buffer kecil elak
+// race condition tepat di sempadan minit (jam sistem/rangkaian tak segerak sempurna).
+function msSehinggaResetMinit(now) {
+  return (60_000 - (now % 60_000)) + 250;
+}
+
 // ---- Ambil OHLC (I/O) ----
 
 // Pulang { candles: [{t,o,h,l,c}] | null, sumber: "cache"|"api"|"manual", ralat? }.
 // `sumber:"manual"` bermaksud UI patut guna input manual (calculator.js).
-export async function ambilOHLC(pairId, interval, { paksa = false, outputsize = 250 } = {}) {
+//
+// `tungguKuota` (lalai true): bila had SEMINIT (bukan harian) dicapai, TUNGGU sehingga
+// reset (≤ ~60s) lalu cuba sekali lagi, dari-dahulu memberi tumpu-balik senyap →
+// kehilangan data pertengahan-scan (cth "Kira kekuatan" lepas "Muat data" dalam minit
+// sama) yang menyebabkan gate "tiada data" palsu dalam scoring.js. Had HARIAN gagal
+// segera — menunggu tak berbaloi (boleh sejam+).
+export async function ambilOHLC(
+  pairId,
+  interval,
+  { paksa = false, outputsize = 250, tungguKuota = true } = {}
+) {
   const pair = cariPair(pairId);
   const { provider, apikey } = bacaTetapanApi();
   const symbol = simbolProvider(pair, provider);
-  const now = Date.now();
+  let now = Date.now();
 
   if (!paksa) {
     const segar = bacaCache(provider, symbol, interval, now, TTL[interval]);
@@ -166,13 +188,27 @@ export async function ambilOHLC(pairId, interval, { paksa = false, outputsize = 
   if (!apikey) {
     return { candles: null, sumber: "manual", ralat: "Tiada kunci API — guna input manual." };
   }
-  if (kuotaBaki(now) <= 0) {
+  if (kuotaHarian(now).baki <= 0) {
     const lama = bacaCache(provider, symbol, interval, now, null);
     return {
       candles: lama,
       sumber: lama ? "cache" : "manual",
-      ralat: "Kuota seminit habis — cuba sebentar lagi.",
+      ralat: "Kuota harian habis — cuba esok atau guna input manual.",
     };
+  }
+  if (kuotaBaki(now) <= 0) {
+    if (tungguKuota) {
+      await tunggu(msSehinggaResetMinit(now));
+      now = Date.now();
+    }
+    if (kuotaBaki(now) <= 0) {
+      const lama = bacaCache(provider, symbol, interval, now, null);
+      return {
+        candles: lama,
+        sumber: lama ? "cache" : "manual",
+        ralat: "Kuota seminit habis — cuba sebentar lagi.",
+      };
+    }
   }
 
   try {

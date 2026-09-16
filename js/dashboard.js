@@ -183,22 +183,34 @@ export function renderDashboard(host, pairId, modId = "swing") {
     const btn = isiEl.querySelector("#muat-kekuatan");
     if (btn) {
       btn.disabled = true;
-      btn.innerHTML = `${SPINNER} Mengira…`;
+      btn.innerHTML = `${SPINNER} Mengira 1/${PAIRS.length}…`;
     }
     const perubahan = {};
+    let hilang = 0;
     // Kekuatan mata wang guna % perubahan HARIAN. Guna semula candles pasangan semasa
     // hanya jika slot-hi mod ialah Harian (swing); dalam mod scalp st.candlesD memegang
     // H1, jadi ambil "D" sebenar supaya % kekal harian, bukan setiap jam.
+    //
+    // ambilOHLC() kini tunggu-&-cuba-semula sendiri bila kuota-seminit ketat (≤ ~60s
+    // setiap kali), supaya "Kira kekuatan" tak kehilangan sebahagian pasangan hanya
+    // sebab ia dipanggil sejurus lepas "Muat data" guna kuota dalam minit yang sama.
+    let i = 0;
     for (const pr of PAIRS) {
+      i++;
+      if (btn) btn.innerHTML = `${SPINNER} Mengira ${i}/${PAIRS.length}…`;
       const rr =
         pr.id === p.id && mod.tf.hi === "D" && st.candlesD
           ? { candles: st.candlesD }
           : await ambilOHLC(pr.id, "D", { outputsize: 30 });
       const ch = perubahanHarian(rr.candles);
       if (ch != null) perubahan[pr.id] = ch;
+      else hilang++;
+      lukisKuota();
     }
     st.kekuatan = kekuatanMataWang(perubahan);
-    lukisKuota();
+    if (hilang > 0 && statusEl) {
+      statusEl.innerHTML += `<div class="nota">⚠️ Kekuatan mata wang: ${hilang}/${PAIRS.length} pasangan gagal ambil data (kuota/rangkaian) — anggaran mungkin tidak lengkap.</div>`;
+    }
     kiraDanLukis();
   }
 
@@ -345,7 +357,8 @@ export function renderDashboard(host, pairId, modId = "swing") {
           )
           .join("")
       : `<p class="nota">Belum dikira — jimat kredit.</p>
-         <button class="btn-kecil" id="muat-kekuatan">⤓ Kira kekuatan (≈7 kredit)</button>`;
+         <button class="btn-kecil" id="muat-kekuatan">⤓ Kira kekuatan (≈7 kredit)</button>
+         <p class="nota">Boleh ambil masa sehingga ~1 minit jika kuota seminit ketat (auto-tunggu, bukan macet).</p>`;
 
     const rsiKelas = ind1h && ind1h.rsi != null ? (ind1h.rsi >= 70 ? "verdict-sell" : ind1h.rsi <= 30 ? "verdict-buy" : "") : ""; // prettier-ignore
     const macdKelas = ind1h && ind1h.macdHist != null ? (ind1h.macdHist > 0 ? "verdict-buy" : "verdict-sell") : ""; // prettier-ignore
